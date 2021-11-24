@@ -1,7 +1,7 @@
 import math as m
 import numpy as np
 import json
-import struct
+import joblib
 import datetime
 from dateutil.parser import parse
 import ssm.coor_ref as cr
@@ -21,6 +21,13 @@ class cel_body:
         self.mass_kg = mass_kg
         self.GM_kms = mass_kg * self.G_kms
         self.diameter_km = diameter
+
+    def body_data_dict():
+        return {
+            "name": self.name,
+            "mass_kg": self.mass_kg,
+            "diameter_km": self.diameter_km
+        }
     
     def __str__(self):
         return ('\n\n{}\n- mass[kg] : {}\n- diameter[km] : {}\n'.format(self.name, self.mass_kg, self.diameter_km))
@@ -70,7 +77,18 @@ class rotate:
             self.reffrm.reset_reffrm(self.eqnx_lon_rad, self.incln_rad, self.curr_rad, self.name, 
                                     self.body_orbit.dist_km, self.body_orbit.curr_rad, 0)
         else: self.reffrm.reset_reffrm(self.eqnx_lon_rad, self.incln_rad, self.curr_rad, self.name) 
-    
+
+
+    # rotation data 딕셔너리 출력 
+    def rot_data_dict(self):
+        return {
+            "eqnx_lon_rad": self.eqnx_lon_rad,
+            "incln_rad": self.incln_rad,
+            "ang_v_rad": self.ang_v_rad,
+            "rot_ang_rad": self.curr_rad
+        }
+
+
     def __str__(self):
         return ("\n\n- refference frame :" + str(self.reffrm)).replace('\n', '\n  ')
 
@@ -110,7 +128,6 @@ class orbit:
         self.home_coor=cr.coor3('s', (self.dist_km, anom_true_rad, m.pi/2))
         self.home_coor.conv_coor_modeOS()
         self.base_coor=self.reffrm.base_conv(self.home_coor, 'sa')
-
 
     # 현 각위치 재설정
     def set_curr_rad(self, new_curr_rad):
@@ -161,6 +178,20 @@ class orbit:
     def orbital_period_s(self):
         mu_km=self.center_body.GM_kms
         return 2*m.pi*m.sqrt((self.a_km**3)/mu_km)
+
+    # orbit data 딕셔너러 출력
+    def orb_data_dict(self):
+        return {
+            "center_body": self.center_body.name,
+            "e": self.e,
+            "a_km": self.a_km,
+            "node_lon_rad": self.node_lon_rad,
+            "incln_rad": self.incln_rad,
+            "periap_ang_rad": self.periap_ang_rad,
+            "apsidat_prcs_speed": self.apsidal_prcs_speed,
+            "nodal_prcs": self.nodal_prcs_speed,
+            "anom_true_rad": self.curr_rad
+        }
 
     def __repr__(self):
         return ("\n\n- coordinate info : " + str(self.home_coor)+'\n\n- referance frame : '+str(self.reffrm)).replace('\n', '\n  ')
@@ -267,6 +298,12 @@ class ssm_element:
     def list_reffrm_coor(self):
         return self.rot.reffrm+self.orb.reffrm+self.orb.base_coor
 
+    # element data 딕셔너리 출력
+    def element_data_dict(self):
+        datas=self.body.body_data_dict()
+        if self.orb: datas["orbit"]=self.orb.orb_data_dict()
+        if self.rot: datas["rotate"]=self.rot.rot_data_dict()
+        return datas 
             
     def __str__(self):
         return ("┌──"
@@ -298,12 +335,11 @@ class solar_system_model:
 
             print("configuring {}...".format(config["model_name"]))
             new_ssm=cls(config["model_name"], parse(config["elements"][1][config["Event"]]))
-
+            
             # make solar system individual celestial element obj
             for elm_data in config['elements']: new_ssm.add_element(elm_data)
             
             print("\nLoading Complete\n", new_ssm)
-
             return new_ssm
 
 
@@ -318,14 +354,22 @@ class solar_system_model:
 
     def config_JSON_dump(self, file_name):
         with open(file_name, "w") as file_json:
-            json.dumps(file_json)
+            json.dumps(self.ssm_data_dict, file_json)
 
-    def config_struct_load(file_name):
-        pass
+    @classmethod
+    def config_obj_load(cls, file_name): return joblib.load(file_name)
 
-    def config_struct_write(file_name):
-        pass
+    def config_obj_write(self, file_name): joblib.dump(self, file_name)
 
+    # solar system model data 딕셔너리 출력
+    def ssm_data_dict(self):
+        data=self.elm_dict
+        for k, v in data.values(): data[k]=v.element_data_dict()
+        data["model_name"]=self.name
+        data["datetime"]=self.date_time
+        return data
+
+#################### magic methods #######################
     def __str__(self):
         rpr='\n\n   [[ model information ]]\n'.replace('\n', '\n          ') +"""
       ___           ___           ___     
