@@ -1,0 +1,59 @@
+{
+  "model_name" : "SEM",
+  "count": 3,
+  "config_datetime": "2021-09-29T11:32:00.0+09:00",   //Z는 UTC기준시, +00:00이 대신 오면 시간차(time offset) 있는거
+  "cel_names": ["Sun", "Earth", "Moon"],
+  "abs_ref": 1,
+  "body_chars": [
+    {
+      "name": "Sun",
+      "mass_kg": 1.9885e+30,
+      "diameter_km": 1392700
+    },
+    {
+      "name": "Earth",
+      "mass_kg": 5.9722e+24,
+      "diameter_km": 12742
+    },
+    {
+      "name": "Moon",
+      "mass_kg": 7.34767309e+22,
+      "diameter_km": 3474.8
+    }
+  ],
+
+  "rotate_chars":[
+    {
+      "incln_rad": 0.016710219,
+      "eqnx_lon_rad": 0,
+      "ang_v_rads": 7.29e-5,
+      "curr_rad": 0 //아직 모른다(현 시각 현 위치)
+    },
+    {
+      "incln_rad": 0.1167,
+      "eqnx_lon_rad": 0,
+      "ang_v_rads": 2.7e-6, // 공전주기와 같으므로 의미없음
+      "curr_rad": 0 //아직 모른다(현 시각 현 위치)
+    }
+  ],
+    "orbit_chars":[
+      {
+        "e": 0.016710219,
+        "a_km": 149597887.5,
+        "node_lon_rad": 0,
+        "indn_rad": 0,
+        "periap_ang_rad": 0,
+        "anom_true_rad": 0 //아직 모른다(현시각 현 위치, 진근점이각)
+      },
+      {
+        "e":0.0549,
+        "a_km": 384400,
+        "node_lon_rad": 0,  // 딱히 기준 없음
+        "indn_rad": 5.145,  // deg라서 바꿔야함
+        "periap_ang_rad": 0, // 달은 이게 변하므로 데이터 필요함(일식)
+        "anom_true_rad": 0 //아직 모른다(현시각 현 위치, 진근점이각)
+      }
+    ],
+
+    "cel_tree": [0, [1, [2]]]
+}
