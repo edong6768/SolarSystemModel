@@ -4,7 +4,8 @@ import json
 import struct
 import datetime
 from dateutil.parser import parse
-import coor_ref as cr
+import ssm.coor_ref as cr
+
 
 
 ###############################################################
