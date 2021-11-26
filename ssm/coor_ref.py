@@ -173,7 +173,7 @@ class coor3:  # 좌표계상 수치쌍 class(기준틀 하나에 대해)
     self.reset_coor(coor_mode, *coors)
 
   def reset_coor(self, coor_mode='s', *coors):
-    self.vec=np.unique(np.hstack(tuple(map(self.__typecast, coors))), axis=1)   # 입력들을 각각 형변환하여 하나의 2D배열(3xn 행렬)로 저장, 중복벡터 삭제
+    self.vec=np.hstack(tuple(map(self.__typecast, coors)))  # 입력들을 각각 형변환하여 하나의 2D배열(3xn 행렬)로 저장
     self.coor_mode=self.__coor_mode_test(coor_mode)       # 직교'o' 또는 구면's'
     self.current=0
     self.__l=len(self)
@@ -188,7 +188,10 @@ class coor3:  # 좌표계상 수치쌍 class(기준틀 하나에 대해)
     SequenceSizeError.len_test(3, 'coor', coor) # 입력 좌표의 크기가 3이 아니면 오류
     return coor
 
-  def tuplify(self): return tuple(self.vec.transpose()[0])
+  def tuplify(self, index=None): 
+    lst=[tuple(v) for v in self.vec.transpose()]
+    if index!=None: lst=lst[index]
+    return lst
   
   # 허용된 좌표계가 아닐 경우 오류
   def __coor_mode_test(self, coor_mode):
@@ -454,11 +457,11 @@ class reffrms:   # 기준틀 데이터 class
   # abs<->self 좌표계 회전+평행이동 변환 행렬 계산 메소드(4x4 행렬)
   def __total_conv_matmaker(self, *char_val):
     a=char_val
-    eu1=np.array([[1, 0, 0, 0], [0, m.cos(a[0]), m.sin(a[0]), 0], [0, -m.sin(a[0]), m.cos(a[0]), 0], [0, 0, 0, 1]])
-    eu2=np.array([[m.cos(a[1]), 0, -m.sin(a[1]), 0], [0, 1, 0, 0],[m.sin(a[1]), 0, m.cos(a[1]), 0], [0, 0, 0, 1]]) 
-    eu3=np.array([[m.cos(a[2]), m.sin(a[2]), 0, a[3]], [-m.sin(a[2]), m.cos(a[2]), 0, a[4]], [0, 0, 1, a[5]], [0, 0, 0, 1]])
-    M_inv=eu3@eu2@eu1       # abs -> self
-    M=np.linalg.inv(M_inv)  # self -> abs
+    eu1=np.array([[m.cos(a[0]), -m.sin(a[0]), 0, a[3]], [m.sin(a[0]), m.cos(a[0]), 0, a[4]], [0, 0, 1, a[5]], [0, 0, 0, 1]])
+    eu2=np.array([[1, 0, 0, 0], [0, m.cos(a[1]), -m.sin(a[1]), 0], [0, m.sin(a[1]), m.cos(a[1]), 0], [0, 0, 0, 1]])
+    eu3=np.array([[m.cos(a[2]), -m.sin(a[2]), 0, 0], [m.sin(a[2]), m.cos(a[2]), 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+    M=eu1@eu2@eu3       # self -> abs
+    M_inv=np.linalg.inv(M)  # abs -> self
     return {'sa' : M, 'as' : M_inv}
 
   # convM가 주어졌을 때 coor 변환
@@ -486,5 +489,4 @@ class reffrms_set:
   def coor_conv_all(self, coor_rf):
     coor_base=coor_rf.base_conv_coorset.coor
     return {k:coor_ref(v.base_conv(coor_base,'as'), v) for k, v in self.reffrms}
-
 

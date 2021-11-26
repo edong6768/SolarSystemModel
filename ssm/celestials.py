@@ -1,10 +1,14 @@
 import math as m
+from matplotlib import artist
 import numpy as np
 import json
 import joblib
 import datetime
 from dateutil.parser import parse
 import ssm.coor_ref as cr
+import matplotlib.pyplot as plt
+#from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.animation import FuncAnimation
 
 
 
@@ -16,7 +20,7 @@ class cel_body:
     G_kms = 6.67384 * 10**-20
 
     def __init__(self, name, mass_kg, diameter):
-        print("Loading {} body info...".format(name))
+        print("Loading {} body info...".format(name), end="\r")
         self.name = name
         self.mass_kg = mass_kg
         self.GM_kms = mass_kg * self.G_kms
@@ -43,7 +47,7 @@ class cel_body:
 # 자전 관련 데이터
 class rotate:
     def __init__(self, eqnx_lon_rad, incln_rad, ang_v_rad,rot_ang_rad, body, body_orbit=None):
-        print("Loading {} rotation info...".format(body.name))
+        print("Loading {} rotation info...".format(body.name), end="\r")
         self.eqnx_lon_rad = eqnx_lon_rad  # 춘분점 경도 : 기준면상 기준축과 적도승교점 사이 각도(자전축 방향)
         self.incln_rad = incln_rad  # 자전축 기울기
 
@@ -54,9 +58,9 @@ class rotate:
         self.body_orbit=body_orbit    # 공전obj
         self.name=body.name+'_rot'  # 이름
 
-        print("Calculating {} rotation refference frame matrix...".format(body.name))
+        print("Calculating {} rotation refference frame matrix...".format(body.name),  end="\r")
         # reffrm
-        self.reffrm=cr.reffrms(eqnx_lon_rad, incln_rad, self.curr_rad, self.name, *(body_orbit.home_coor.tuplify())) if body_orbit \
+        self.reffrm=cr.reffrms(eqnx_lon_rad, incln_rad, self.curr_rad, self.name, *body_orbit.home_coor.tuplify(0)) if body_orbit \
             else cr.reffrms(eqnx_lon_rad, incln_rad, self.curr_rad, self.name) 
 
     def set_curr_rad(self, new_curr_rad):
@@ -65,8 +69,8 @@ class rotate:
 
 
     # t_diff step시간 후 각도변화(천체 자전)
-    def rotational_increment_angle_rad(self, t_diff):
-        self.curr_rad+=t_diff*self.ang_v_rad
+    def rotational_increment_angle_rad(self, tdelta):
+        self.curr_rad+=tdelta*self.ang_v_rad
         self.curr_rad%=2*m.pi
 
         self.reset_reffrm() # 기준틀 업데이트
@@ -75,7 +79,7 @@ class rotate:
     def reset_reffrm(self):
         if self.body_orbit:
             self.reffrm.reset_reffrm(self.eqnx_lon_rad, self.incln_rad, self.curr_rad, self.name, 
-                                    self.body_orbit.dist_km, self.body_orbit.curr_rad, 0)
+                                    *self.body_orbit.base_coor.tuplify(0))
         else: self.reffrm.reset_reffrm(self.eqnx_lon_rad, self.incln_rad, self.curr_rad, self.name) 
 
 
@@ -90,14 +94,16 @@ class rotate:
 
 
     def __str__(self):
-        return ("\n\n- refference frame :" + str(self.reffrm)).replace('\n', '\n  ')
+        return ("rotation characteristics : " + "\n- rotation speed[deg/s] : " + str(self.ang_v_rad*180/m.pi)
+                + "\n- orientational parameters[deg] : (" + str(self.eqnx_lon_rad*180/m.pi) + ", " + str(self.incln_rad*180/m.pi) + ")" 
+                + "\n\nstatus : " + "\n- angle[deg] : " + str(self.curr_rad*180/m.pi) + "\n- refference frame :" + str(self.reffrm)).replace('\n', '\n  ')
 
 
 # 공전 관련 데이터(케플러적 이체모델)
 class orbit:
-    def __init__(self, eccentricity, a_km, node_lon_rad, incln_rad, periap_ang_rad, anom_true_rad,
-                 apsidal_prcs_speed, nodal_prcs_speed, body, center_body, center_body_orbit=None):
-        print("Loading {} orbit info...".format(body.name))
+    def __init__(self, eccentricity, a_km, node_lon_rad, incln_rad, periap_ang_rad,
+                 apsidal_prcs_speed, nodal_prcs_speed, anom_true_rad, body, center_body, center_body_orbit=None):
+        print("Loading {} orbit info...".format(body.name), end="\r")
         # 궤도 특징
         self.e = eccentricity  # 궤도 이심률
         self.a_km = a_km  # 긴반지름
@@ -119,10 +125,11 @@ class orbit:
         # 이름
         self.name=body.name+'_orb'
 
-        print("Calculating {} orbit refference frame matrix...".format(body.name))
+        print("Calculating {} orbit refference frame matrix...".format(body.name), end="\r")
         # reffrm
-        self.reffrm=cr.reffrms(node_lon_rad, incln_rad, periap_ang_rad, self.name, *center_body_orbit.base_coor.tuplify()) \
+        self.reffrm=cr.reffrms(node_lon_rad, incln_rad, periap_ang_rad, self.name, *center_body_orbit.base_coor.tuplify(0)) \
              if center_body_orbit else cr.reffrms(node_lon_rad, incln_rad, periap_ang_rad, self.name)
+        #if center_body_orbit: print("skrtskrt", self.name, center_body_orbit.base_coor.tuplify(0))
 
         # coor3
         self.home_coor=cr.coor3('s', (self.dist_km, anom_true_rad, m.pi/2))
@@ -138,7 +145,10 @@ class orbit:
     # 출력 : 중심천체와의 거리(km)
     @property
     def dist_km(self):
-        return self.a_km * (1 - self.e**2) / (1 +self.e * m.cos(self.curr_rad))
+        return self.__conic(self.curr_rad)
+    
+    def __conic(self, ang):
+        return self.a_km * (1 - self.e**2) / (1 +self.e * m.cos(ang))
 
     # 입력 : 해당 천체의 공전궤도상 진근점이각(중심천체에서 바라본 근일점과의 각도)
     # 출력 : 순간공전속도(km/s)
@@ -148,17 +158,17 @@ class orbit:
         return m.sqrt(mu_km*(2/self.dist_km-1/self.a_km))
 
     # t_diff step시간 후 각도변화(천체 공전궤도 및 위치 변화)
-    def orbital_increment_angle_rad(self, t_diff):
+    def orbital_increment_angle_rad(self, tdelta):
         # 진근점 이각 변화 수치근사(euler's method)
-        self.curr_rad+=t_diff*self.inst_speed_kms/self.dist_km
+        self.curr_rad+=tdelta*self.inst_speed_kms/self.dist_km
         self.curr_rad%=2*m.pi
 
         # 근점편각 변화
-        self.periap_ang_rad+=t_diff*self.apsidal_prcs_speed
+        self.periap_ang_rad+=tdelta*self.apsidal_prcs_speed
         self.periap_ang_rad%=2*m.pi
         
         # 승교점 경도 변화
-        self.node_lon_rad+=t_diff*self.nodal_prcs_speed
+        self.node_lon_rad+=tdelta*self.nodal_prcs_speed
         self.node_lon_rad%=2*m.pi
 
         #self.reset_reffrm() # 기준틀 업데이트
@@ -166,13 +176,14 @@ class orbit:
     def reset_reffrm(self):
         if self.center_body_orbit:
             self.reffrm.reset_reffrm(self.node_lon_rad, self.incln_rad, self.periap_ang_rad, self.name,
-                                    *tuple(self.center_body_orbit.base_coor.vec)) 
+                                    *self.center_body_orbit.base_coor.tuplify(0))
         else: self.reffrm.reset_reffrm(self.node_lon_rad, self.incln_rad, self.periap_ang_rad, self.name) 
     
     def reset_coor(self):
         self.home_coor.reset_coor('s', (self.dist_km, self.curr_rad, m.pi/2))
         self.home_coor.conv_coor_modeOS()
         self.base_coor=self.reffrm.base_conv(self.home_coor, 'sa')
+        #print("hihihihi", self.name,self.base_coor)
 
     # 천체의 공전주기
     def orbital_period_s(self):
@@ -188,13 +199,45 @@ class orbit:
             "node_lon_rad": self.node_lon_rad,
             "incln_rad": self.incln_rad,
             "periap_ang_rad": self.periap_ang_rad,
-            "apsidat_prcs_speed": self.apsidal_prcs_speed,
+            "apsidal_prcs_speed": self.apsidal_prcs_speed,
             "nodal_prcs": self.nodal_prcs_speed,
             "anom_true_rad": self.curr_rad
         }
 
-    def __repr__(self):
-        return ("\n\n- coordinate info : " + str(self.home_coor)+'\n\n- referance frame : '+str(self.reffrm)).replace('\n', '\n  ')
+    def __str__(self):
+        return ("\n\norbit characteristics : \n- eccentricity : " + str(self.e) + "\n- semi major axis[km] : " + str(self.a_km) 
+        + "\n- orientational parameters[deg] : (" + str(self.node_lon_rad*180/m.pi) + ", " + str(self.incln_rad*180/m.pi) + ", " + str(self.periap_ang_rad*180/m.pi) + ")"
+        + "\n- precession speeds[deg/s] : (apsidal:" + str(self.apsidal_prcs_speed*180/m.pi) + ", nodal:" + str(self.nodal_prcs_speed*180/m.pi) + ")"
+        + "\n\nstatus :"
+        + "\n- angle[deg] : " + str(self.curr_rad*180/m.pi) + "\n- coordinate info : " + str(self.base_coor)+'\n- referance frame : '+str(self.reffrm)).replace('\n', '\n  ')
+
+
+    # makes list of X, Y, Z coordinates of the entire elliptic orbit
+    def __orb_plot_coors(self):
+        th=np.linspace(0, 2* m.pi, 500)
+        coor=[(self.__conic(ang), ang, m.pi/2) for ang in list(th)]
+        coor=cr.coor3('s', *coor)
+        coor.conv_coor_modeOS()
+        coor=self.reffrm.base_conv(coor, 'sa')
+        X, Y, Z = tuple([list(i) for i in list(zip(*coor.tuplify()))])
+        return X, Y, Z
+    
+    def plot(self, ax):
+        # plot orbit(ellipse)
+        X, Y, Z = self.__orb_plot_coors()
+        orb=ax.plot(X, Y, Z)
+
+        # 중심천체--근일점 선분
+        cntr=self.center_body_orbit.base_coor.tuplify(0) if self.center_body_orbit else [0, 0, 0]
+        peri=ax.plot((cntr[0], X[0]), (cntr[1], Y[0]), (cntr[2], Z[0]))
+
+        # plot celestial position(dot)
+        loc=[ax.scatter(*self.base_coor.tuplify(0), marker='o')]
+
+        art=orb+peri+loc
+        return X, Y, Z, art
+
+
 
 ###############################################################
 #                     solar system model                      #
@@ -236,7 +279,7 @@ class ssm_element:
             # 지구 자전: 근일점에 있을 때 춘분점(승교점)과 원점(위도0경도0, 근일점 지나는 시각으로 계산) 사이 이각으로 curr_rad 입력
             rot=["eqnx_lon_rad", "incln_rad", "ang_v_rad"]
             self.rot=rotate(*(elm_data_dict["rotate"][i] for i in rot), (self.orb.periap_ang_rad+m.pi)%(2*m.pi), self.body, self.orb)
-            self.timetravel(elm_data_dict["perihelion"], elm_data_dict["Eclipse"])  # 근일점으로 설정된 지구를 일식이 일어나는 지점으로 옮김
+            self.elm_timetravel(elm_data_dict["perihelion"], elm_data_dict["Eclipse"])  # 근일점으로 설정된 지구를 일식이 일어나는 지점으로 옮김
 
         else:   # 지구 외 태양, 달 또는 다른 행성/위성
             # 공전
@@ -244,8 +287,9 @@ class ssm_element:
                 orb=["e", "a_km", "node_lon_rad", "incln_rad", "periap_ang_rad", "apsidal_prcs", "nodal_prcs", "anom_true_rad"]
                 
                 # 일식 때는 지구-달-태양이 모두 일직선에 있으므로, 지구에 대해 계산한 값을 달의 현재 승교점편각에 그대로 사용할 수 있다.
-                if elm_data_dict["orbit"]["node_lon_rad"]=='None' : elm_data_dict["orbit"]["node_lon_rad"]=0
-                elm_data_dict["orbit"]["nodal_lon_rad"]=(cntr_elm.orb.curr_rad+m.pi)%(2*m.pi)
+                if elm_data_dict["orbit"]["node_lon_rad"]=='None' : 
+                    elm_data_dict["orbit"]["node_lon_rad"]=(cntr_elm.orb.curr_rad+m.pi)%(2*m.pi)
+                    
                 # 각 공전궤도요소의 세차 주기를 이용해 등속이란 가정 하에 각속도 계산(rad/s)
                 prcs=["apsidal_prcs", "nodal_prcs"]
                 elm_data_dict["orbit"][prcs[0]], elm_data_dict["orbit"][prcs[1]]=(2*m.pi/datetime.timedelta(days=elm_data_dict["orbit"][p]).total_seconds() for p in prcs)
@@ -259,7 +303,7 @@ class ssm_element:
             else: self.rot = None
 
     # 천체를 tdelta 후의 위치로 이동
-    def increment_motion(self, tdelta):
+    def next_iter(self, tdelta):
         if self.orb: self.orb.orbital_increment_angle_rad(tdelta)
         if self.rot: self.rot.rotational_increment_angle_rad(tdelta)
 
@@ -272,14 +316,14 @@ class ssm_element:
             self.rot.reset_reffrm()
 
     # 천체를 특정 시각에서의 위치로 옮김
-    def timetravel(self, curr_time, target_time, tdelta=None):
+    def elm_timetravel(self, curr_time, target_time, tdelta=None):
         tdiff=(parse(target_time) - parse(curr_time)).total_seconds()    # 현재와 목표 시간 사이 초
         if not tdiff: return
         if tdelta:  # 사용자가 tdelta를 입력했을 시
             tdelta=tdelta if tdiff>=0 else -tdelta     # 목표시간이 현재보다 과거일 시 tdelta에 - 붙임
 
             while True:
-                self.increment_motion(tdelta)
+                self.next_iter(tdelta)
                 tdiff_prev=tdiff
                 tdiff-=tdelta
                 if tdiff*tdiff_prev<=0: break
@@ -288,7 +332,7 @@ class ssm_element:
                 if td>abs(tdiff): continue
                 td=td if tdiff>=0 else -td
                 while True:
-                    self.increment_motion(td)
+                    self.next_iter(td)
                     tdiff_prev=tdiff
                     tdiff-=td
                     if (tdiff-td)*(tdiff_prev-td)<=0: break
@@ -324,18 +368,22 @@ class solar_system_model:
         self.elements=[]
         self.elm_dict = dict()
 
+        self.fig=plt.figure()
+        self.ax = self.fig.add_subplot(projection='3d')
+        
+
 ###############file load/export & model_obj constructor###############
 
     @classmethod
     def config_JSON_load(cls, file_name):
         with open(file_name, "r") as file_json:
             # load json & make new obj
-            print("Loading json...\n")
+            print("Loading json...\n", end="\r")
             config = json.load(file_json)
 
-            print("configuring {}...".format(config["model_name"]))
+            print("configuring {}...".format(config["model_name"]), end="\r")
             new_ssm=cls(config["model_name"], parse(config["elements"][1][config["Event"]]))
-            
+
             # make solar system individual celestial element obj
             for elm_data in config['elements']: new_ssm.add_element(elm_data)
             
@@ -369,7 +417,7 @@ class solar_system_model:
         data["datetime"]=self.date_time
         return data
 
-#################### magic methods #######################
+#################### string & visualize #######################
     def __str__(self):
         rpr='\n\n   [[ model information ]]\n'.replace('\n', '\n          ') +"""
       ___           ___           ___     
@@ -377,7 +425,7 @@ class solar_system_model:
     /:/ _/_       /:/ _/_       |::\  \   
    /:/ /\  \     /:/ /\  \      |:|:\  \  
   /:/ /::\  \   /:/ /::\  \   __|:|\:\  \ 
- /:/_/:/\:\__\ /:/_/:/\:\__\ /::::|_\:\__\\
+ /:/_/:/\:\__\ /:/_/:/\:\__\ /::::|_\:\__\ 
  \:\/:/ /:/  / \:\/:/ /:/  / \:\~~\  \/__/
   \::/ /:/  /   \::/ /:/  /   \:\  \      
    \/_/:/  /     \/_/:/  /     \:\  \     
@@ -388,25 +436,131 @@ class solar_system_model:
         for elm in self.elements: rpr+=str(elm)+'\n\n'
         return rpr
 
+
+    def plot(self):
+        sun = (0, 0, 0)
+        self.ax.scatter(*sun, color='red')
+
+        art=list()
+        X, Y, Z =list(), list(), list()
+        for e in self.elements[1:]:
+            Xe, Ye, Ze, arts = e.orb.plot(self.ax)
+            X, Y, Z = X+Xe, Y+Ye, Z+Ze
+            art+=arts
+
+        # X, Y, Z 축 사이 비율 교정(없으면 서로 길이 비율이 달라져 일그러짐)
+        X, Y, Z = map(np.array, (X, Y, Z))
+        max_range = np.array([X.max()-X.min(), Y.max()-Y.min(), Z.max()-Z.min()]).max() / 2.0
+
+        mid_x = (X.max()+X.min()) * 0.5
+        mid_y = (Y.max()+Y.min()) * 0.5
+        mid_z = (Z.max()+Z.min()) * 0.5
+        self.ax.set_xlim(mid_x - max_range, mid_x + max_range)
+        self.ax.set_ylim(mid_y - max_range, mid_y + max_range)
+        self.ax.set_zlim(mid_z - max_range, mid_z + max_range)
+
+        self.ax.set_xlabel('X')
+        self.ax.set_ylabel('Y')
+        self.ax.set_zlabel('Z')
+
+        self.ax.legend(list(self.elm_dict.keys())[1:])
+
+        #plt.show()
+
+        return art
+
+    def __tt_anim_setup(self, i, ax, tdelta):
+        art=self.__plot_setup(ax)
+        self.next_iter(tdelta)
+        return art
+
+    def timetravel_animation(self, tdelta):
+        fig = plt.figure()
+        ax = fig.add_subplot(projection='3d')
+    
+        FuncAnimation(fig, self.__tt_anim_setup, frames=200, fargs=(ax, tdelta), interval=100)
+        plt.show()
+
+
+
+
 ############### model compile tools ###################
 
     def model_compile(self, cls, *snap_times):
         compiled = np.vstack(compiled, cls.__mono_iterational_compile())
         return solsys_compile_data(model_compile_code, cel_name, *snap_times, snap_count, compiled)
 
+    # tdelta 뒤 위치 추정
+    def next_iter(self, tdelta):
+        for e in self.elements[1:]:
+            e.next_iter(tdelta)
+            e.reset_reffrm_coor()
+            #print(e)
+        self.date_time+=datetime.timedelta(seconds=tdelta)
+
+    # 천체를 특정 시각에서의 위치로 옮김
+    def timetravel(self, target_time, tdelta=None):
+        tdiff=(parse(target_time) - self.date_time).total_seconds()    # 현재와 목표 시간 사이 초
+        if not tdiff: return
+        if tdelta:  # 사용자가 tdelta를 입력했을 시
+            tdelta=tdelta if tdiff>=0 else -tdelta     # 목표시간이 현재보다 과거일 시 tdelta에 - 붙임
+            while True:
+                self.next_iter(tdelta)
+                tdiff_prev=tdiff
+                tdiff-=tdelta
+                if tdiff*tdiff_prev<=0: break
+                print(self.date_time, end="\r")
+        else:
+            for td in [3600*24*365.25, 3600*24, 3600, 60, 1]:    # 시간절약을 위해 1년 전까지는 1년단위, 하루전 까지는 하루단위, 1시간 전까지는 1시간단위, 1초단위로 나누어 계산
+                if td>abs(tdiff): continue
+                td=td if tdiff>=0 else -td
+                while True:
+                    self.next_iter(td)
+                    tdiff_prev=tdiff
+                    tdiff-=td
+                    if (tdiff-td)*(tdiff_prev-td)<=0: break
+                    print(self.date_time, end="\r")
+        print("Time travel terminated : Arrived at ", self.date_time)
+
+    def timetravel_diff(self, d=0, h=0, M=0, s=0, tdelta=None):
+        diff=datetime.timedelta(days=d, hours=h, minutes=M, seconds=s)
+        self.timetravel((self.date_time+diff).strftime('%Y-%m-%dT%H:%M:%S.0Z'), tdelta)
+
+    
     # dist 거리에 있는 천체의 시직경
     def angular_diameter(self, cel1, cel2):
         dist = self.distance(cel1, cel2)
         return m.atan(cel2.diameter_km / dist)
 
-    def ellipse_boundary_angle(dist_e2m_km, dist_s2e_km, sun_data, earth_data,
-                               moon_data):
-        rs = sun_data.diameter_km / 2
-        re = earth_data.diameter_km / 2
-        rm = moon_data.diameter_km / 2
-        rse = rs - re
-        rem = re + rm
-        return m.asin(rse / dist_s2e_km) + m.asin(rem / dist_e2m_km)
+############## 일식분석툴 ###############
+
+    # 현제 위치에서 거리관계로 계산한 일식경계이각, eclipse boundary elongation
+    def eclps_elon_rad(self):
+        rs, re, rm = (e.body.diameter_km/2 for e in self.elements)
+        s2e_km=abs(self.elements[1].orb.base_coor)
+        e2m_km=self.elements[1].orb.base_coor / self.elements[2].orb.base_coor
+        return m.asin((rs-re)/ s2e_km) + m.asin((re+rm) / e2m_km)
+    
+    # 이각 : 지구에서 관측한 태양과 천체 사이 각도
+    def elon_rad(self):
+        er, mn= (e.orb.base_coor for e in self.elements[1:])
+        return (mn-er)%(-er)
+
+    # 현재 일식이 발생하고 있는지 확인
+    def eclps_judge(self): 
+        # if (self.elon_rad()<self.eclps_elon_rad()):
+        #     print("%.5f < %.5f ? %s"%(self.elon_rad()*180/m.pi, self.eclps_elon_rad()*180/m.pi, (self.elon_rad()<self.eclps_elon_rad())))
+        return (self.elon_rad()<self.eclps_elon_rad())
+    
+    # 
+    def search_eclipse(self, tdelta):
+        while(not self.eclps_judge()): 
+            self.next_iter(tdelta)
+            print(self.date_time, end="\r")
+        return self.date_time
+
+        
+
 
 
 

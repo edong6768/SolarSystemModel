@@ -13,7 +13,7 @@
       "mass_kg": 5.9722e+24,
       "diameter_km": 12742,
       "perihelion": "2021-01-02T13:51:00.0Z",
-      "Eclipse": "2021-05-26T11:19:53.0Z",
+      "Eclipse": "2021-06-10T10:41:51.0Z",
       "rotate":{
         "eqnx_lon_rad": 1.346032,
         "incln_rad": 0.016710219,
@@ -38,7 +38,7 @@
         "e":0.0549,
         "a_km": 384400,
         "node_lon_rad": "None",
-        "incln_rad": 5.145,
+        "incln_rad": 0.08979719002,
         "periap_ang_rad": 0,
         "apsidal_prcs": 3233,
         "nodal_prcs": -6793,
