@@ -205,7 +205,66 @@ class coor3:  # 좌표계상 수치쌍 class(기준틀 하나에 대해)
 
   # 같은 정보를 가진 새로운 coor3 객체 반환
   def copy_coor(self):
-    return coor3(self.coor_mode, self.vec)
+    return coor3(self.coor_mode, np.copy(self.vec))
+
+
+
+  ################ operation overload ################
+
+  # add two vectors
+  def __add__(self, other): # self + other
+    return coor3('o', self.__vecO+other.__vecO)
+
+  # sub two vectors
+  def __sub__(self, other): # self - other
+    return coor3('o', self.__vecO-other.__vecO)
+
+
+
+  # vector norm
+  def norm(self):
+    return self.__normO(self.__vecO)
+    
+  # norm of each vector
+  def __abs__(self):  # abs(self)
+    return self.norm()
+
+
+  # inner product
+  def inner_pdt(self, other=None):
+    other_vec= None if other==None else other.__vecO
+    return self.__inner_pdtO(self.__vecO, other_vec)
+
+  # dot product(returns scalar)
+  def __mul__(self, other): # self * other
+    return self.inner_pdt(other)
+
+
+  # 두 점 사이 거리
+  def dist(self, other):
+    return (self-other).norm()
+  
+  def __truediv__(self, other): # self / other
+    return self.dist(other)
+
+
+  # self(선, 원점지나고 self.vec와 평행)에서 other(점)까지 거리
+  def distFL(self, other): # self // other
+    return abs(other.__vecO-(((self*other)/(self*self))*self.__vecO))
+
+  def __floordiv__(self, other):
+    return self.distFL(other)
+
+  # self와 other 사이 라디안 각
+  def ang_rad(self, other):
+    return m.acos((self*other)/(abs(self)*abs(other)))
+
+  def __mod__(self, other): # self % other
+    return self.ang_rad(other)
+  
+  # negate self
+  def __neg__(self):
+    return coor3(self.coor_mode, -np.copy(self.vec))
 
 
   ################ Magic Methods ################
@@ -247,19 +306,15 @@ class coor3:  # 좌표계상 수치쌍 class(기준틀 하나에 대해)
     return str(self.tuplify())
 
 
-  ################ operation overload ################
-
-  # create new coor3 obj containing vectors of both operands
-  def __add__(self, other):
-    if self.coor_mode!=other.coor_mode : 
-      raise Exception('Cannot combine coor3s between different coor_modes')
-    return coor3(self.coor_mode, self.vec, other.vec)
-
-#  def __sub__(self, other):
 
   ################ for internal np operation ################
   # np broadcasting 덕분에 각 요소와 스칼라간의 사칙연산 가능
   # 행렬(벡터(좌표)의 나열)도 계산 가능
+
+  # return orthogonal mode vector
+  @property
+  def __vecO(self):
+    return self.vec if self.coor_mode=='o' else self.__convOS_bidir(self.vec, 'so')
 
 
   ############### 직교 <--> 구면 ###############
@@ -275,42 +330,52 @@ class coor3:  # 좌표계상 수치쌍 class(기준틀 하나에 대해)
   # vecS(r, theta , phi) -> vec_r(r), vecA(경도, 위도)
   @classmethod
   def __slice_r(cls, vecS):   # synomym to convSA
-    return vecS[0,:], np.vstack((vecS[2,:], m.pi-vecS[1,:]))
+    return vecS[0,:], np.vstack((vecS[1,:], m.pi/2-vecS[2,:]))
   
-  # vec_r(r), vecA(경도, 위도) -> vecS(r, theta , phi)
+  # vec_r(r), vecA(경도, 위도) -> vecS(r, phi, theta)
   @classmethod
   def __unslice_r(cls, vec_r, vecA):   # synomym to convAS
-    return np.vstack((vec_r, m.pi-vecA[1,:], vecA[0,:]))
+    return np.vstack((vec_r, vecA[0,:], m.pi/2-vecA[1,:]))
   
 
   ###############################
   # (2) vecO <--> (vec_r, vec_O1)
   
+  @classmethod
+  def __inner_pdtO(cls, vecO1, vecO2=None):
+    if type(vecO2)!=np.ndarray: vecO2=vecO1
+    vecnew=vecO1*vecO2
+    return vecnew[0,:]+vecnew[1,:]+vecnew[2,:]
+
   # norm(r) of vecO : vecO(x, y, z) --> vec_r(r)
+  @classmethod
   def __normO(cls, vecO):
-    vecO_pow2=np.power(vecO,2)
-    vec_r = cls.v_sqrt(vecO_pow2[0,:]+vecO_pow2[1,:]+vecO_pow2[2,:])
-    return vec_r
+    vecO_pow2=cls.__inner_pdtO(vecO)
+    return cls.v_sqrt(vecO_pow2)
 
   # vecO(x, y, z) ---> vec_r(r), vecO_1(x, y, z)
+  @classmethod
   def __normalizeO(cls, vecO):
     vec_r = cls.__normO(vecO)
     return vec_r, vecO/vec_r
   
   # vec_r(r), vecO_1(x, y, z) ---> vecO(x, y, z)
+  @classmethod
   def __denormalizeO(cls, vec_r, vecO_1):
     return vec_r*vecO_1
   
   ###############################
   # (3) (vec_r, vecA) <--> (vec_r, vec_O1)
+  @classmethod
   def __convOA_1_bidir(cls, vec_OA, conv_mode):
     if conv_mode=='oa':
       return np.vstack((cls.v_atan(vec_OA[1,:]/vec_OA[0,:]), cls.v_asin(vec_OA[2,:])))  # 위도시스템은 기준면에서 올라가므로 z에 asin
     elif conv_mode=='ao':
-      return np.vstack((cls.v_sin(vec_OA[1,:])*cls.v_cos(vec_OA[0,:]), cls.v_sin(vec_OA[1,:])*cls.v_sin(vec_OA[0,:]), cls.v_sin(vec_OA[1,:])))
+      return np.vstack((cls.v_cos(vec_OA[1,:])*cls.v_cos(vec_OA[0,:]), cls.v_cos(vec_OA[1,:])*cls.v_sin(vec_OA[0,:]), cls.v_sin(vec_OA[1,:])))
 
   ###############################
   # (4) final : vecO(구면) <--> vecS(직교))
+  @classmethod
   def __convOS_bidir(cls, vec_OS, conv_mode):
     if conv_mode=='os' :
       vec_r, vecO_1 = cls.__normalizeO(vec_OS)
