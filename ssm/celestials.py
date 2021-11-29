@@ -20,7 +20,7 @@ class cel_body:
     G_kms = 6.67384 * 10**-20
 
     def __init__(self, name, mass_kg, diameter):
-        print("Loading {} body info...".format(name), end="\r")
+        #print("Loading {} body info...".format(name), end="\r")
         self.name = name
         self.mass_kg = mass_kg
         self.GM_kms = mass_kg * self.G_kms
@@ -35,6 +35,22 @@ class cel_body:
     
     def __str__(self):
         return ('\n\n{}\n- mass[kg] : {}\n- diameter[km] : {}\n'.format(self.name, self.mass_kg, self.diameter_km))
+
+    def plot(self, ax, disp=(0, 0, 0), color=None):
+        # plot celestial position(dot)
+        if color : ax.scatter(*disp, marker='o', color=color)
+        else : ax.scatter(*disp, marker='o')
+
+        # plot celestial body(sphere)
+        # u = np.linspace(0, np.pi, 30)
+        # v = np.linspace(0, 2 * np.pi, 30)
+        # r = self.diameter_km/2
+
+        # x = r*np.outer(np.sin(u), np.sin(v))+disp[0]
+        # y = r*np.outer(np.sin(u), np.cos(v))+disp[1]
+        # z = r*np.outer(np.cos(u), np.ones_like(v))+disp[2]
+
+        # ax.plot_surface(x, y, z)
         
 
 
@@ -47,7 +63,7 @@ class cel_body:
 # 자전 관련 데이터
 class rotate:
     def __init__(self, eqnx_lon_rad, incln_rad, ang_v_rad,rot_ang_rad, body, body_orbit=None):
-        print("Loading {} rotation info...".format(body.name), end="\r")
+        #print("Loading {} rotation info...".format(body.name), end="\r")
         self.eqnx_lon_rad = eqnx_lon_rad  # 춘분점 경도 : 기준면상 기준축과 적도승교점 사이 각도(자전축 방향)
         self.incln_rad = incln_rad  # 자전축 기울기
 
@@ -58,7 +74,7 @@ class rotate:
         self.body_orbit=body_orbit    # 공전obj
         self.name=body.name+'_rot'  # 이름
 
-        print("Calculating {} rotation refference frame matrix...".format(body.name),  end="\r")
+        #print("Calculating {} rotation refference frame matrix...".format(body.name),  end="\r")
         # reffrm
         self.reffrm=cr.reffrms(eqnx_lon_rad, incln_rad, self.curr_rad, self.name, *body_orbit.home_coor.tuplify(0)) if body_orbit \
             else cr.reffrms(eqnx_lon_rad, incln_rad, self.curr_rad, self.name) 
@@ -103,7 +119,7 @@ class rotate:
 class orbit:
     def __init__(self, eccentricity, a_km, node_lon_rad, incln_rad, periap_ang_rad,
                  apsidal_prcs_speed, nodal_prcs_speed, anom_true_rad, body, center_body, center_body_orbit=None):
-        print("Loading {} orbit info...".format(body.name), end="\r")
+        #print("Loading {} orbit info...".format(body.name), end="\r")
         # 궤도 특징
         self.e = eccentricity  # 궤도 이심률
         self.a_km = a_km  # 긴반지름
@@ -125,7 +141,7 @@ class orbit:
         # 이름
         self.name=body.name+'_orb'
 
-        print("Calculating {} orbit refference frame matrix...".format(body.name), end="\r")
+        #print("Calculating {} orbit refference frame matrix...".format(body.name), end="\r")
         # reffrm
         self.reffrm=cr.reffrms(node_lon_rad, incln_rad, periap_ang_rad, self.name, *center_body_orbit.base_coor.tuplify(0)) \
              if center_body_orbit else cr.reffrms(node_lon_rad, incln_rad, periap_ang_rad, self.name)
@@ -225,17 +241,16 @@ class orbit:
     def plot(self, ax):
         # plot orbit(ellipse)
         X, Y, Z = self.__orb_plot_coors()
-        orb=ax.plot(X, Y, Z)
+        ax.plot(X, Y, Z)
 
         # 중심천체--근일점 선분
         cntr=self.center_body_orbit.base_coor.tuplify(0) if self.center_body_orbit else [0, 0, 0]
-        peri=ax.plot((cntr[0], X[0]), (cntr[1], Y[0]), (cntr[2], Z[0]))
+        ax.plot((cntr[0], X[0]), (cntr[1], Y[0]), (cntr[2], Z[0]))
 
-        # plot celestial position(dot)
-        loc=[ax.scatter(*self.base_coor.tuplify(0), marker='o')]
+        # plot celestial body
+        self.body.plot(ax, self.base_coor.tuplify(0))
 
-        art=orb+peri+loc
-        return X, Y, Z, art
+        return X, Y, Z
 
 
 
@@ -266,7 +281,7 @@ class orbit:
 
 class ssm_element:
     def __init__(self, elm_data_dict, cntr_elm=None):
-        print("\nLoading {}...".format(elm_data_dict['name']))
+        #print("\nLoading {}...".format(elm_data_dict['name']))
         self.name=elm_data_dict["name"]
         body = ["name", "mass_kg", "diameter_km"]
         self.body=cel_body(*[elm_data_dict[i] for i in body])
@@ -375,19 +390,19 @@ class solar_system_model:
 ###############file load/export & model_obj constructor###############
 
     @classmethod
-    def config_JSON_load(cls, file_name):
+    def config_JSON_load(cls, file_name, print_info=True):
         with open(file_name, "r") as file_json:
             # load json & make new obj
-            print("Loading json...\n", end="\r")
+            #print("Loading json...\n", end="\r")
             config = json.load(file_json)
 
-            print("configuring {}...".format(config["model_name"]), end="\r")
+            #print("configuring {}...".format(config["model_name"]), end="\r")
             new_ssm=cls(config["model_name"], parse(config["elements"][1][config["Event"]]))
 
             # make solar system individual celestial element obj
             for elm_data in config['elements']: new_ssm.add_element(elm_data)
             
-            print("\nLoading Complete\n", new_ssm)
+            if print_info : print("\nLoading Complete\n", new_ssm)
             return new_ssm
 
 
@@ -436,17 +451,19 @@ class solar_system_model:
         for elm in self.elements: rpr+=str(elm)+'\n\n'
         return rpr
 
+    def __plot_setup(self, frame=None):
+        plt.cla()   # clear plot
 
-    def plot(self):
-        sun = (0, 0, 0)
-        self.ax.scatter(*sun, color='red')
-
-        art=list()
+        self.elements[0].body.plot(self.ax, color='red')
+        
+        frmelm = self.elements[frame] if frame else frame 
         X, Y, Z =list(), list(), list()
         for e in self.elements[1:]:
-            Xe, Ye, Ze, arts = e.orb.plot(self.ax)
-            X, Y, Z = X+Xe, Y+Ye, Z+Ze
-            art+=arts
+            Xe, Ye, Ze = e.orb.plot(self.ax)
+            if frmelm==e:
+                X, Y, Z = Xe, Ye, Ze
+            else :
+                X, Y, Z = X+Xe, Y+Ye, Z+Ze
 
         # X, Y, Z 축 사이 비율 교정(없으면 서로 길이 비율이 달라져 일그러짐)
         X, Y, Z = map(np.array, (X, Y, Z))
@@ -465,20 +482,18 @@ class solar_system_model:
 
         self.ax.legend(list(self.elm_dict.keys())[1:])
 
-        #plt.show()
+        self.fig.canvas.draw()
 
-        return art
+    def plot(self, frame=None):
+        self.__plot_setup(frame)
+        plt.show()
 
-    def __tt_anim_setup(self, i, ax, tdelta):
-        art=self.__plot_setup(ax)
+    def __tt_anim_setup(self, i, tdelta):
+        self.__plot_setup()
         self.next_iter(tdelta)
-        return art
 
     def timetravel_animation(self, tdelta):
-        fig = plt.figure()
-        ax = fig.add_subplot(projection='3d')
-    
-        FuncAnimation(fig, self.__tt_anim_setup, frames=200, fargs=(ax, tdelta), interval=100)
+        FuncAnimation(plt.gcf(), self.__tt_anim_setup, fargs=(tdelta), interval=1000)
         plt.show()
 
 
@@ -553,10 +568,13 @@ class solar_system_model:
         return (self.elon_rad()<self.eclps_elon_rad())
     
     # 
-    def search_eclipse(self, tdelta):
-        while(not self.eclps_judge()): 
+    def search_eclipse(self, tdelta, until=None):
+        while(not self.eclps_judge()):
             self.next_iter(tdelta)
+            if (until and parse(until)<self.date_time): break
             print(self.date_time, end="\r")
+        if self.eclps_judge() : print("Search success : ", self.date_time.strftime('%Y-%m-%dT%H:%M:%S.0Z'))
+        else : print("Search failed")
         return self.date_time
 
         
