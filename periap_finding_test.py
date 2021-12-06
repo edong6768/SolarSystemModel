@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-true_time=parse("2021-12-04T07:00:01.0Z")
+true_time=parse("2021-12-04T05:29:11.3Z")
 curr_time=0
 td=0
 
@@ -15,22 +15,22 @@ opt_time=0
 opt_td=1000000000
 opt_peri=0
 
-center=-0.03371705485228767
+center=-0.021752620244022663
 count=10
-precision=0.0001
+precision=0.00001
 pad=(m.pi/180)*precision*count
-peri_total = list(np.linspace(center-pad, center-pad+1, 2))
+peri_total = list(np.linspace(center-pad, center+pad, count))
 td_total=list()
-
+#print(peri_total)
 for peri in peri_total:
     a=cel.solar_system_model.config_JSON_load('data/SEM_config_snapshot_0.json', print_info=False)    # reset model
 
     a.elements[2].orb.periap_ang_rad=peri               # set this iteration's periap angle
 
-    a.timetravel("2021-12-04T06:30:00.0Z", 3600)        # use timetravel to reduce computation time
-    a.timetravel("2021-12-04T06:57:00.0Z", 1)        # use timetravel to reduce computation time
-    a.timetravel("2021-12-04T06:59:00.0Z", 0.1)        # use timetravel to reduce computation time
-    curr_time=a.search_eclipse(0.001, until="2021-12-04T07:01:00.0Z")                 # search eclipse
+    a.timetravel("2021-12-04T04:30:00.0Z", 3600)        # use timetravel to reduce computation time
+    a.timetravel("2021-12-04T05:29:00.0Z", 1)        # use timetravel to reduce computation time
+    #a.timetravel("2021-12-04T06:59:00.0Z", 0.1)        # use timetravel to reduce computation time
+    curr_time=a.search_eclipse(0.001, until="2021-12-04T05:30:00.0Z")                 # search eclipse
 
     td=(true_time-curr_time).total_seconds()            # differece from true date
     if abs(td)<abs(opt_td):                             # update value if it is closer to true date

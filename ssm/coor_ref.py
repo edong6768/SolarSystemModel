@@ -192,6 +192,9 @@ class coor3:  # 좌표계상 수치쌍 class(기준틀 하나에 대해)
     lst=[tuple(v) for v in self.vec.transpose()]
     if index!=None: lst=lst[index]
     return lst
+
+  def normalize(self):
+    self.vec=self.vec/abs(self)  
   
   # 허용된 좌표계가 아닐 경우 오류
   def __coor_mode_test(self, coor_mode):
@@ -246,9 +249,20 @@ class coor3:  # 좌표계상 수치쌍 class(기준틀 하나에 대해)
   # 두 점 사이 거리
   def dist(self, other):
     return (self-other).norm()
+
+  # vector들을 divint배 줄이기
+  def div(self, divint):
+    new=self.copy_coor()
+    new_mode=(new.coor_mode=='s')
+    if new_mode : new.conv_coor_modeOS()
+    new.vec=new.vec/divint
+    if new_mode : new.conv_coor_modeOS()
+    return new
   
   def __truediv__(self, other): # self / other
-    return self.dist(other)
+    if type(self)==type(other) : return self.dist(other)
+    elif type(other)==type(int()) : return self.div(other)
+      
 
 
   # self(선, 원점지나고 self.vec와 평행)에서 other(점)까지 거리
@@ -477,16 +491,4 @@ class reffrms:   # 기준틀 데이터 class
     dest=coor3('o', coor_dest)
     if coor_mode_conv: dest.conv_coor_modeOS()
     return dest
-
-    
-class reffrms_set:
-  def __init__(self, *reffrms):
-    self.reffrms={r:r.name for r in reffrms}
-
-  def add_reffrm(self, reffrm):
-    self.reffmrs[reffrm.name]=reffrm
-  
-  def coor_conv_all(self, coor_rf):
-    coor_base=coor_rf.base_conv_coorset.coor
-    return {k:coor_ref(v.base_conv(coor_base,'as'), v) for k, v in self.reffrms}
 

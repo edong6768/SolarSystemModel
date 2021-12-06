@@ -7,7 +7,7 @@ import datetime
 from dateutil.parser import parse
 import ssm.coor_ref as cr
 import matplotlib.pyplot as plt
-#from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FuncAnimation
 
 
@@ -19,14 +19,15 @@ from matplotlib.animation import FuncAnimation
 class cel_body:
     G_kms = 6.67384 * 10**-20
 
-    def __init__(self, name, mass_kg, diameter):
+    def __init__(self, name, mass_kg, diameter, color=None):
         #print("Loading {} body info...".format(name), end="\r")
         self.name = name
         self.mass_kg = mass_kg
         self.GM_kms = mass_kg * self.G_kms
         self.diameter_km = diameter
+        self.color=color
 
-    def body_data_dict():
+    def body_data_dict(self):
         return {
             "name": self.name,
             "mass_kg": self.mass_kg,
@@ -36,21 +37,29 @@ class cel_body:
     def __str__(self):
         return ('\n\n{}\n- mass[kg] : {}\n- diameter[km] : {}\n'.format(self.name, self.mass_kg, self.diameter_km))
 
-    def plot(self, ax, disp=(0, 0, 0), color=None):
-        # plot celestial position(dot)
-        if color : ax.scatter(*disp, marker='o', color=color)
-        else : ax.scatter(*disp, marker='o')
 
+    ###################### plot ###########################
+    def sphere_coors(self, disp=(0, 0, 0)):
         # plot celestial body(sphere)
-        # u = np.linspace(0, np.pi, 30)
-        # v = np.linspace(0, 2 * np.pi, 30)
-        # r = self.diameter_km/2
+        u = np.linspace(0, np.pi, 30)
+        v = np.linspace(0, 2 * np.pi, 30)
+        r = self.diameter_km/2
 
-        # x = r*np.outer(np.sin(u), np.sin(v))+disp[0]
-        # y = r*np.outer(np.sin(u), np.cos(v))+disp[1]
-        # z = r*np.outer(np.cos(u), np.ones_like(v))+disp[2]
+        x = r*np.outer(np.sin(u), np.sin(v))+disp[0]
+        y = r*np.outer(np.sin(u), np.cos(v))+disp[1]
+        z = r*np.outer(np.cos(u), np.ones_like(v))+disp[2]
+        return x, y, z
 
-        # ax.plot_surface(x, y, z)
+
+    def plot(self, ax, disp=(0, 0, 0), sphere=False):
+        # plot celestial position(dot)
+        if not sphere:
+            if self.color : ax.scatter(*disp, marker='o', color=self.color)
+            else : ax.scatter(*disp, marker='o')
+        else:
+            # plot celestial body(sphere)
+            if self.color: ax.plot_surface(*self.sphere_coors(disp), color=self.color)
+            else : ax.plot_surface(*self.sphere_coors(disp))
         
 
 
@@ -76,7 +85,7 @@ class rotate:
 
         #print("Calculating {} rotation refference frame matrix...".format(body.name),  end="\r")
         # reffrm
-        self.reffrm=cr.reffrms(eqnx_lon_rad, incln_rad, self.curr_rad, self.name, *body_orbit.home_coor.tuplify(0)) if body_orbit \
+        self.reffrm=cr.reffrms(eqnx_lon_rad, incln_rad, self.curr_rad, self.name, *body_orbit.base_coor.tuplify(0)) if body_orbit \
             else cr.reffrms(eqnx_lon_rad, incln_rad, self.curr_rad, self.name) 
 
     def set_curr_rad(self, new_curr_rad):
@@ -187,7 +196,8 @@ class orbit:
         self.node_lon_rad+=tdelta*self.nodal_prcs_speed
         self.node_lon_rad%=2*m.pi
 
-        #self.reset_reffrm() # 기준틀 업데이트
+        # self.reset_reffrm() # 기준틀 업데이트
+        # self.reset_coor()
 
     def reset_reffrm(self):
         if self.center_body_orbit:
@@ -229,7 +239,7 @@ class orbit:
 
 
     # makes list of X, Y, Z coordinates of the entire elliptic orbit
-    def __orb_plot_coors(self):
+    def orbital_coors(self):
         th=np.linspace(0, 2* m.pi, 500)
         coor=[(self.__conic(ang), ang, m.pi/2) for ang in list(th)]
         coor=cr.coor3('s', *coor)
@@ -238,20 +248,19 @@ class orbit:
         X, Y, Z = tuple([list(i) for i in list(zip(*coor.tuplify()))])
         return X, Y, Z
     
-    def plot(self, ax):
+    def plot(self, ax, sphere=False):
         # plot orbit(ellipse)
-        X, Y, Z = self.__orb_plot_coors()
-        ax.plot(X, Y, Z)
+        X, Y, Z = self.orbital_coors()
+        ax.plot(X, Y, Z, color="black", linewidth=0.5)
 
         # 중심천체--근일점 선분
         cntr=self.center_body_orbit.base_coor.tuplify(0) if self.center_body_orbit else [0, 0, 0]
-        ax.plot((cntr[0], X[0]), (cntr[1], Y[0]), (cntr[2], Z[0]))
+        ax.plot((cntr[0], X[0]), (cntr[1], Y[0]), (cntr[2], Z[0]), color="black", linewidth=0.5)
 
         # plot celestial body
-        self.body.plot(ax, self.base_coor.tuplify(0))
+        self.body.plot(ax, self.base_coor.tuplify(0), sphere=sphere)
 
         return X, Y, Z
-
 
 
 ###############################################################
@@ -284,7 +293,11 @@ class ssm_element:
         #print("\nLoading {}...".format(elm_data_dict['name']))
         self.name=elm_data_dict["name"]
         body = ["name", "mass_kg", "diameter_km"]
-        self.body=cel_body(*[elm_data_dict[i] for i in body])
+        if self.name=="Sun": color='red'
+        elif self.name=="Earth": color='blue'
+        else: color='grey'
+
+        self.body=cel_body(*[elm_data_dict[i] for i in body], color=color)
 
         if self.body.name=='Earth':   # 지구의 초기위치 매개변수값의 결정은 json에서 주어진 근일점 시각에서부터 일식 시각까지 수치해석하여 구한다.
             #지구 공전
@@ -382,9 +395,6 @@ class solar_system_model:
         self.date_time=date_time
         self.elements=[]
         self.elm_dict = dict()
-
-        self.fig=plt.figure()
-        self.ax = self.fig.add_subplot(projection='3d')
         
 
 ###############file load/export & model_obj constructor###############
@@ -451,15 +461,18 @@ class solar_system_model:
         for elm in self.elements: rpr+=str(elm)+'\n\n'
         return rpr
 
-    def __plot_setup(self, frame=None):
+    def __plot_setup(self, fig, frame=None, sphere=False):
+        pass
+
+    def plot(self, ax, frame=None, sphere=False):
         plt.cla()   # clear plot
 
-        self.elements[0].body.plot(self.ax, color='red')
+        self.elements[0].body.plot(ax, sphere=sphere)
         
         frmelm = self.elements[frame] if frame else frame 
         X, Y, Z =list(), list(), list()
         for e in self.elements[1:]:
-            Xe, Ye, Ze = e.orb.plot(self.ax)
+            Xe, Ye, Ze = e.orb.plot(ax, sphere=sphere)
             if frmelm==e:
                 X, Y, Z = Xe, Ye, Ze
             else :
@@ -472,38 +485,134 @@ class solar_system_model:
         mid_x = (X.max()+X.min()) * 0.5
         mid_y = (Y.max()+Y.min()) * 0.5
         mid_z = (Z.max()+Z.min()) * 0.5
-        self.ax.set_xlim(mid_x - max_range, mid_x + max_range)
-        self.ax.set_ylim(mid_y - max_range, mid_y + max_range)
-        self.ax.set_zlim(mid_z - max_range, mid_z + max_range)
+        ax.set_xlim(mid_x - max_range, mid_x + max_range)
+        ax.set_ylim(mid_y - max_range, mid_y + max_range)
+        ax.set_zlim(mid_z - max_range, mid_z + max_range)
 
-        self.ax.set_xlabel('X')
-        self.ax.set_ylabel('Y')
-        self.ax.set_zlabel('Z')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
 
-        self.ax.legend(list(self.elm_dict.keys())[1:])
+        ax.legend(list(self.elm_dict.keys())[1:])
 
-        self.fig.canvas.draw()
+        #fig.canvas.draw()
 
-    def plot(self, frame=None):
-        self.__plot_setup(frame)
-        plt.show()
+    #천구 plot
+    def cheongu_plot(self, ax):
+        # 적도 원
+        th=np.linspace(0, 2* m.pi, 500)
+        coor=[(1, ang, m.pi/2) for ang in list(th)]
+        coor=cr.coor3('s', *coor)
+        coor.conv_coor_modeOS()
+        ax.plot(*tuple([list(i) for i in list(zip(*coor.tuplify()))]), color='midnightblue', linewidth=0.5)
 
-    def __tt_anim_setup(self, i, tdelta):
-        self.__plot_setup()
-        self.next_iter(tdelta)
+        # 위도/경도 0,0 선
+        ax.plot((0, 1), (0, 0), (0, 0), color='midnightblue', linewidth=0.5)
 
-    def timetravel_animation(self, tdelta):
-        FuncAnimation(plt.gcf(), self.__tt_anim_setup, fargs=(tdelta), interval=1000)
-        plt.show()
+        # 관측자가 서 있는 천체의 reffrm obj
+        cntr_ref=self.elements[1].rot.reffrm
+
+        # 태양 외 천체 천구에 표시
+        for e in [self.elements[0]]+self.elements[2:]:
+            if e.orb: disp=(cntr_ref.base_conv(e.orb.base_coor, 'as'))
+            else : disp=cntr_ref.base_conv(cr.coor3('o', (0, 0, 0)), 'as')
+
+            disp.normalize()
+            #self.ax.scatter(*disp.tuplify(0))
+            
+            ### 천구상 천체를 원으로 표시 ###
+            # 천체의 시직경
+            ang_d=self.__ang_d(e)
+
+            # 원 생성(numpy 이용) : 일단 천정쪽에 생성
+            th=np.linspace(0, 2* m.pi, 500)
+            coor=[(1, ang, ang_d) for ang in list(th)]
+            #print(coor)
+            coor=cr.coor3('s', *coor)
+            coor.conv_coor_modeOS()
+
+            # 좌표변환을 통해 천정상에 있는 원을 원래 있을 위치로 이동
+            disp.conv_coor_modeOS()
+            ang_ch=disp.tuplify(0)
+            ang_ch=((ang_ch[1]+m.pi/2)%(2*m.pi), ang_ch[2])
+
+            ang_ch_ref=cr.reffrms(*ang_ch)
+            coor=ang_ch_ref.base_conv(coor, 'sa')
+            ax.plot(*tuple([list(i) for i in list(zip(*coor.tuplify()))]), color=e.body.color)
+
+
+        # X, Y, Z 축 사이 비율 교정(없으면 서로 길이 비율이 달라져 일그러짐)
+        ax.set_xlim(-1, 1)
+        ax.set_ylim(-1, 1)
+        ax.set_zlim(-1, 1)        
+
+    def cheongu_plot2d(self, ax):
+        # 적도 원
+        th=np.linspace(-m.pi, m.pi, 500)
+        ax.plot(list(th), [0 for i in range(500)], color='midnightblue', linewidth=0.5)
+
+        # 위도/경도 0,0
+        ax.scatter(0, 0, color='midnightblue', s=2)
+
+        # 관측자가 서 있는 천체의 reffrm obj
+        cntr_ref=self.elements[1].rot.reffrm
+
+        # 태양 외 천체 천구에 표시
+        for e in [self.elements[0]]+self.elements[2:]:
+            if e.orb: disp=(cntr_ref.base_conv(e.orb.base_coor, 'as'))
+            else : disp=cntr_ref.base_conv(cr.coor3('o', (0, 0, 0)), 'as')
+
+            disp.normalize()
+            #self.ax.scatter(*disp.tuplify(0))
+            
+            ### 천구상 천체를 원으로 표시 ###
+            # 천체의 시직경
+            ang_d=self.__ang_d(e)
+
+            # 원 생성(numpy 이용) : 일단 천정쪽에 생성
+            th=np.linspace(0, 2* m.pi, 500)
+            coor=[(1, ang, ang_d) for ang in list(th)]
+            #print(coor)
+            coor=cr.coor3('s', *coor)
+            coor.conv_coor_modeOS()
+
+            # 좌표변환을 통해 천정상에 있는 원을 원래 있을 위치로 이동
+            disp.conv_coor_modeOS()
+            ang_ch=disp.tuplify(0)
+            ang_ch=((ang_ch[1]+m.pi/2)%(2*m.pi), ang_ch[2])
+
+            ang_ch_ref=cr.reffrms(*ang_ch)  # 천정에서 원래 위치로의 이동을 위한 임시 reffrm
+            coor=ang_ch_ref.base_conv(coor, 'sa')
+            coor.conv_coor_modeOS()
+            coor = list(zip(*coor.tuplify()))
+            coor[1] = tuple([-ph for ph in coor[1]])
+            coor[2] = tuple([m.pi/2-th for th in coor[2]])
+            r, phi, theta = tuple([list(i) for i in coor])
+            ax.plot(phi, theta, color=e.body.color)
+
+
+        # X, Y, Z 축 사이 비율 교정(없으면 서로 길이 비율이 달라져 일그러짐)
+        ax.set_xlim(-m.pi, m.pi)
+        ax.set_ylim(-m.pi, m.pi)
+
+
+
+    # def __tt_anim_setup(self, i, tdelta):
+    #     self.__plot_setup()
+    #     self.next_iter(tdelta)
+
+    # def timetravel_animation(self, tdelta):
+    #     FuncAnimation(plt.gcf(), self.__tt_anim_setup, fargs=(tdelta), interval=1000)
+    #     plt.show()
 
 
 
 
 ############### model compile tools ###################
 
-    def model_compile(self, cls, *snap_times):
-        compiled = np.vstack(compiled, cls.__mono_iterational_compile())
-        return solsys_compile_data(model_compile_code, cel_name, *snap_times, snap_count, compiled)
+    # def model_compile(self, cls, *snap_times):
+    #     compiled = np.vstack(compiled, cls.__mono_iterational_compile())
+    #     return solsys_compile_data(model_compile_code, cel_name, *snap_times, snap_count, compiled)
 
     # tdelta 뒤 위치 추정
     def next_iter(self, tdelta):
@@ -542,14 +651,23 @@ class solar_system_model:
         self.timetravel((self.date_time+diff).strftime('%Y-%m-%dT%H:%M:%S.0Z'), tdelta)
 
     
+    def __ang_d(self, target):
+        ref_c, target_c = self.elements[1], target
+        if target_c.orb: dist = ref_c.orb.base_coor/ target_c.orb.base_coor
+        else : dist = abs(ref_c.orb.base_coor)
+        return m.atan(target_c.body.diameter_km / dist)
+
     # dist 거리에 있는 천체의 시직경
-    def angular_diameter(self, cel1, cel2):
-        dist = self.distance(cel1, cel2)
-        return m.atan(cel2.diameter_km / dist)
+    def angular_diameter(self, target_cel):
+        return self.__ang_d(self.elm_dict[target_cel])
 
 ############## 일식분석툴 ###############
 
     # 현제 위치에서 거리관계로 계산한 일식경계이각, eclipse boundary elongation
+    ## 지구에서 거리dist_s2e_km에 있는 달이 태양에서 오는 빛을 가리기 시작하는 지점(일식경계각)
+    ## (지구중심과 태양중심을 이은 일직선 기준)(l_s2e)
+    ## 입력 : 지구-달 거리, 태양-지구 거리
+    ## 출력 : 지구중심에서 l_s2e을 기준으로 일식경계각
     def eclps_elon_rad(self):
         rs, re, rm = (e.body.diameter_km/2 for e in self.elements)
         s2e_km=abs(self.elements[1].orb.base_coor)
@@ -582,67 +700,45 @@ class solar_system_model:
 
 
 
-class solsys_compile_data:
-    def __init__(self, model_compile_code, cel_name, t_ini, t_diff, t_fin,
-                 snap_count, compiled):
-        self.comp_code = model_compile_code
-        self.cel_name = cel_name  # tuple
-        self.snap_time = t_ini, t_diff, t_fin
-        self.snap_count = snap_count
-        self.compiled = compiled  # 2D numpy array
-        pass
+# class solsys_compile_data:
+#     def __init__(self, model_compile_code, cel_name, t_ini, t_diff, t_fin,
+#                  snap_count, compiled):
+#         self.comp_code = model_compile_code
+#         self.cel_name = cel_name  # tuple
+#         self.snap_time = t_ini, t_diff, t_fin
+#         self.snap_count = snap_count
+#         self.compiled = compiled  # 2D numpy array
+#         pass
 
-    def compdata_loadcsv(cls, file_name):
-        csv = np.loadtxt(file_name, delimiter=",")
-        celname = tuple(csv[0].tolist())
-        compiled = csv[1:, :]
-        with open(file_name, 'r') as f:
-            header = f.readline().replace(" ", "").replace("#", "").split(',')
-            comp_code, snap_time, snap_count = header[1], (
-                header[2], float(header[3]), header[4]), header[5]
-        return cls(comp_code, celname, *snap_time, snap_count, compiled)
+#     def compdata_loadcsv(cls, file_name):
+#         csv = np.loadtxt(file_name, delimiter=",")
+#         celname = tuple(csv[0].tolist())
+#         compiled = csv[1:, :]
+#         with open(file_name, 'r') as f:
+#             header = f.readline().replace(" ", "").replace("#", "").split(',')
+#             comp_code, snap_time, snap_count = header[1], (
+#                 header[2], float(header[3]), header[4]), header[5]
+#         return cls(comp_code, celname, *snap_time, snap_count, compiled)
 
-    def compdata_writecsv(self, file_name):
-        data = np.vstack((np.array(self.cel_name), self.compiled))
-        headers = "{}, {}, {}, {}, {}".format(self.comp_code, *self.snap_time,
-                                              self.snap_count)
-        np.savetxt(file_name,
-                   data,
-                   fmt='%.18e',
-                   delimiter=',',
-                   newline='n',
-                   header=headers)
+#     def compdata_writecsv(self, file_name):
+#         data = np.vstack((np.array(self.cel_name), self.compiled))
+#         headers = "{}, {}, {}, {}, {}".format(self.comp_code, *self.snap_time,
+#                                               self.snap_count)
+#         np.savetxt(file_name,
+#                    data,
+#                    fmt='%.18e',
+#                    delimiter=',',
+#                    newline='n',
+#                    header=headers)
 
-############### comp analysis tools ##################
+# ############### comp analysis tools ##################
 
-    def distance(self, cel1, cel2):
-        c1, c2 = self.cel_dict[cel1], self.cel_dict[cel2]
-
-
-############## comp visual_sim tools #################
-
-    def run_compiled_data():
-        pass
+#     def distance(self, cel1, cel2):
+#         c1, c2 = self.cel_dict[cel1], self.cel_dict[cel2]
 
 
-class solar_system_analysis_prediction_tools:
-    def __init__(self, solar_system_motion_model):
-        self.system_model = solar_system_motion_model
+# ############## comp visual_sim tools #################
 
-    # 일식 분석툴
+#     def run_compiled_data():
+#         pass
 
-    # dist 거리에 있는 천체의 시직경
-    def angular_diameter(dist, sph_cel):
-        return m.atan(sph_cel.diameter_km / dist)
-
-    # 지구에서 거리dist_s2e_km에 있는 달이 태양에서 오는 빛을 가리기 시작하는 지점(일식경계각)
-    # (지구중심과 태양중심을 이은 일직선 기준)(l_s2e)
-    # 입력 : 지구-달 거리, 태양-지구 거리
-    # 출력 : 지구중심에서 l_s2e을 기준으로 일식경계각
-    def ellipse_boundary_angle(dist_e2m_km, dist_s2e_km, sun_data, earth_data, moon_data):
-        rs = sun_data.diameter_km / 2
-        re = earth_data.diameter_km / 2
-        rm = moon_data.diameter_km / 2
-        rse = rs - re
-        rem = re + rm
-        return m.asin(rse / dist_s2e_km) + m.asin(rem / dist_e2m_km)
