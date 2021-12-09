@@ -386,7 +386,8 @@ class coor3:  # 좌표계상 수치쌍 class(기준틀 하나에 대해)
   @classmethod
   def __convOA_1_bidir(cls, vec_OA, conv_mode):
     if conv_mode=='oa':
-      return np.vstack((cls.v_atan(vec_OA[1,:]/vec_OA[0,:]), cls.v_asin(vec_OA[2,:])))  # 위도시스템은 기준면에서 올라가므로 z에 asin
+      return np.vstack((cls.v_atan(vec_OA[1,:]/vec_OA[0,:])+(vec_OA[0,:]<0)*m.pi
+      , cls.v_asin(vec_OA[2,:])))  # 위도시스템은 기준면에서 올라가므로 z에 asin
     elif conv_mode=='ao':
       return np.vstack((cls.v_cos(vec_OA[1,:])*cls.v_cos(vec_OA[0,:]), cls.v_cos(vec_OA[1,:])*cls.v_sin(vec_OA[0,:]), cls.v_sin(vec_OA[1,:])))
 

@@ -54,12 +54,13 @@ class cel_body:
     def plot(self, ax, disp=(0, 0, 0), sphere=False):
         # plot celestial position(dot)
         if not sphere:
-            if self.color : ax.scatter(*disp, marker='o', color=self.color)
-            else : ax.scatter(*disp, marker='o')
+            if self.color : bp,=ax.plot(*disp, linestyle="", marker='o', color=self.color)
+            else : bp,=ax.plot(*disp, linestyle="", marker='o')
         else:
             # plot celestial body(sphere)
-            if self.color: ax.plot_surface(*self.sphere_coors(disp), color=self.color)
-            else : ax.plot_surface(*self.sphere_coors(disp))
+            if self.color: bp=ax.plot_surface(*self.sphere_coors(disp), color=self.color)
+            else : bp=ax.plot_surface(*self.sphere_coors(disp))
+        return bp   # for animation
         
 
 
@@ -251,17 +252,32 @@ class orbit:
     def plot(self, ax, sphere=False):
         # plot orbit(ellipse)
         X, Y, Z = self.orbital_coors()
-        ax.plot(X, Y, Z, color="black", linewidth=0.5)
+        op, = ax.plot(X, Y, Z, color="black", linewidth=0.5)
 
         # 중심천체--근일점 선분
         cntr=self.center_body_orbit.base_coor.tuplify(0) if self.center_body_orbit else [0, 0, 0]
-        ax.plot((cntr[0], X[0]), (cntr[1], Y[0]), (cntr[2], Z[0]), color="black", linewidth=0.5)
+        pl, = ax.plot((cntr[0], X[0]), (cntr[1], Y[0]), (cntr[2], Z[0]), color="black", linewidth=0.5)
 
         # plot celestial body
-        self.body.plot(ax, self.base_coor.tuplify(0), sphere=sphere)
+        bp=self.body.plot(ax, self.base_coor.tuplify(0), sphere=sphere)
+
+        return X, Y, Z, [bp, pl, op]
+    
+    def anim_update(self, plots):
+        coor=list(self.base_coor.tuplify(0))
+        plots[0].set_data(coor[0:2])
+        plots[0].set_3d_properties(coor[2])
+
+        X, Y, Z = self.orbital_coors()
+        cntr=self.center_body_orbit.base_coor.tuplify(0) if self.center_body_orbit else [0, 0, 0]
+
+        plots[1].set_data(np.array((cntr[0], X[0])), np.array((cntr[1], Y[0])))
+        plots[1].set_3d_properties(np.array((cntr[2], Z[0])))
+
+        plots[2].set_data(np.array(X), np.array(Y))
+        plots[2].set_3d_properties(np.array(Z))
 
         return X, Y, Z
-
 
 ###############################################################
 #                     solar system model                      #
@@ -468,15 +484,17 @@ class solar_system_model:
         plt.cla()   # clear plot
 
         self.elements[0].body.plot(ax, sphere=sphere)
-        
+
+        body_plt=list()
         frmelm = self.elements[frame] if frame else frame 
         X, Y, Z =list(), list(), list()
         for e in self.elements[1:]:
-            Xe, Ye, Ze = e.orb.plot(ax, sphere=sphere)
+            Xe, Ye, Ze, bp = e.orb.plot(ax, sphere=sphere)
             if frmelm==e:
                 X, Y, Z = Xe, Ye, Ze
             else :
                 X, Y, Z = X+Xe, Y+Ye, Z+Ze
+            body_plt.append(bp)
 
         # X, Y, Z 축 사이 비율 교정(없으면 서로 길이 비율이 달라져 일그러짐)
         X, Y, Z = map(np.array, (X, Y, Z))
@@ -495,7 +513,8 @@ class solar_system_model:
 
         ax.legend(list(self.elm_dict.keys())[1:])
 
-        #fig.canvas.draw()
+        return body_plt
+
 
     #천구 plot
     def cheongu_plot(self, ax):
@@ -513,6 +532,7 @@ class solar_system_model:
         cntr_ref=self.elements[1].rot.reffrm
 
         # 태양 외 천체 천구에 표시
+        plts=list()
         for e in [self.elements[0]]+self.elements[2:]:
             if e.orb: disp=(cntr_ref.base_conv(e.orb.base_coor, 'as'))
             else : disp=cntr_ref.base_conv(cr.coor3('o', (0, 0, 0)), 'as')
@@ -538,13 +558,16 @@ class solar_system_model:
 
             ang_ch_ref=cr.reffrms(*ang_ch)
             coor=ang_ch_ref.base_conv(coor, 'sa')
-            ax.plot(*tuple([list(i) for i in list(zip(*coor.tuplify()))]), color=e.body.color)
+            cel_p, =ax.plot(*tuple([list(i) for i in list(zip(*coor.tuplify()))]), color=e.body.color)
+            plts.append(cel_p)
 
 
         # X, Y, Z 축 사이 비율 교정(없으면 서로 길이 비율이 달라져 일그러짐)
         ax.set_xlim(-1, 1)
         ax.set_ylim(-1, 1)
-        ax.set_zlim(-1, 1)        
+        ax.set_zlim(-1, 1)     
+
+        return plts   
 
     def cheongu_plot2d(self, ax):
         # 적도 원
@@ -558,6 +581,7 @@ class solar_system_model:
         cntr_ref=self.elements[1].rot.reffrm
 
         # 태양 외 천체 천구에 표시
+        plts=list()
         for e in [self.elements[0]]+self.elements[2:]:
             if e.orb: disp=(cntr_ref.base_conv(e.orb.base_coor, 'as'))
             else : disp=cntr_ref.base_conv(cr.coor3('o', (0, 0, 0)), 'as')
@@ -588,24 +612,142 @@ class solar_system_model:
             coor[1] = tuple([-ph for ph in coor[1]])
             coor[2] = tuple([m.pi/2-th for th in coor[2]])
             r, phi, theta = tuple([list(i) for i in coor])
-            ax.plot(phi, theta, color=e.body.color)
+            cel_p, = ax.plot(phi, theta, color=e.body.color)
+            plts.append(cel_p)
 
 
         # X, Y, Z 축 사이 비율 교정(없으면 서로 길이 비율이 달라져 일그러짐)
         ax.set_xlim(-m.pi, m.pi)
         ax.set_ylim(-m.pi, m.pi)
 
+        return plts
+
+    def __cg2d_anim_update(self, i, plts, tdelta):
+        self.next_iter(tdelta)
+
+        # 관측자가 서 있는 천체의 reffrm obj
+        cntr_ref=self.elements[1].rot.reffrm
+
+        # 태양 외 천체 천구에 표시
+        for n, e in enumerate([self.elements[0]]+self.elements[2:]):
+            if e.orb: disp=(cntr_ref.base_conv(e.orb.base_coor, 'as'))
+            else : disp=cntr_ref.base_conv(cr.coor3('o', (0, 0, 0)), 'as')
+
+            disp.normalize()
+            #self.ax.scatter(*disp.tuplify(0))
+            
+            ### 천구상 천체를 원으로 표시 ###
+            # 천체의 시직경
+            ang_d=self.__ang_d(e)
+
+            # 원 생성(numpy 이용) : 일단 천정쪽에 생성
+            th=np.linspace(0, 2* m.pi, 500)
+            coor=[(1, ang, ang_d) for ang in list(th)]
+            #print(coor)
+            coor=cr.coor3('s', *coor)
+            coor.conv_coor_modeOS()
+
+            # 좌표변환을 통해 천정상에 있는 원을 원래 있을 위치로 이동
+            disp.conv_coor_modeOS()
+            ang_ch=disp.tuplify(0)
+            ang_ch=((ang_ch[1]+m.pi/2)%(2*m.pi), ang_ch[2])
+
+            ang_ch_ref=cr.reffrms(*ang_ch)  # 천정에서 원래 위치로의 이동을 위한 임시 reffrm
+            coor=ang_ch_ref.base_conv(coor, 'sa')
+            coor.conv_coor_modeOS()
+            coor = list(zip(*coor.tuplify()))
+            coor[1] = tuple([-ph for ph in coor[1]])
+            coor[2] = tuple([m.pi/2-th for th in coor[2]])
+            r, phi, theta = tuple([list(i) for i in coor])
+
+            plts[n].set_data(phi, theta)
+
+    def cheongu_animation2d(self, fig, ax, tdelta):
+        plts=self.cheongu_plot2d(ax)
+        ani = FuncAnimation(fig, self.__cg2d_anim_update, 100, fargs=(plts, tdelta), interval=1, blit=False)
+        plt.show()
+
+    def __cg_anim_update(self, i, plts, tdelta):
+        self.next_iter(tdelta)
+
+        # 관측자가 서 있는 천체의 reffrm obj
+        cntr_ref=self.elements[1].rot.reffrm
+
+        # 태양 외 천체 천구에 표시
+        for n, e in enumerate([self.elements[0]]+self.elements[2:]):
+            if e.orb: disp=(cntr_ref.base_conv(e.orb.base_coor, 'as'))
+            else : disp=cntr_ref.base_conv(cr.coor3('o', (0, 0, 0)), 'as')
+
+            disp.normalize()
+            #self.ax.scatter(*disp.tuplify(0))
+            
+            ### 천구상 천체를 원으로 표시 ###
+            # 천체의 시직경
+            ang_d=self.__ang_d(e)
+
+            # 원 생성(numpy 이용) : 일단 천정쪽에 생성
+            th=np.linspace(0, 2* m.pi, 500)
+            coor=[(1, ang, ang_d) for ang in list(th)]
+            #print(coor)
+            coor=cr.coor3('s', *coor)
+            coor.conv_coor_modeOS()
+
+            # 좌표변환을 통해 천정상에 있는 원을 원래 있을 위치로 이동
+            disp.conv_coor_modeOS()
+            ang_ch=disp.tuplify(0)
+            ang_ch=((ang_ch[1]+m.pi/2)%(2*m.pi), ang_ch[2])
+
+            ang_ch_ref=cr.reffrms(*ang_ch)
+            coor=ang_ch_ref.base_conv(coor, 'sa')
+            X, Y, Z = tuple([list(i) for i in list(zip(*coor.tuplify()))])
+            plts[n].set_data(np.array(X), np.array(Y))
+            plts[n].set_3d_properties(np.array(Z))
+
+    def cheongu_animation(self, fig, ax, tdelta):
+        plts=self.cheongu_plot(ax)
+        ani = FuncAnimation(fig, self.__cg_anim_update, 100, fargs=(plts, tdelta), interval=1, blit=False)
+        plt.show()
+
+    
+    def __orb_anim_update(self, i, body_plts, tdelta, ax, frame=0):
+        self.next_iter(tdelta)
+        X, Y, Z = list(), list(), list()
+        for n, elm in enumerate(self.elements[1:]):
+            Xe, Ye, Ze = elm.orb.anim_update(body_plts[n])
+            if frame :
+                if frame==n+1:
+                    X, Y, Z = Xe, Ye, Ze
+            else:
+                X, Y, Z = X+Xe, Y+Ye, Z+Ze
+
+        X, Y, Z = map(np.array, (X, Y, Z))
+        max_range = np.array([X.max()-X.min(), Y.max()-Y.min(), Z.max()-Z.min()]).max() / 2.0
+
+        mid_x = (X.max()+X.min()) * 0.5
+        mid_y = (Y.max()+Y.min()) * 0.5
+        mid_z = (Z.max()+Z.min()) * 0.5
+        ax.set_xlim(mid_x - max_range, mid_x + max_range)
+        ax.set_ylim(mid_y - max_range, mid_y + max_range)
+        ax.set_zlim(mid_z - max_range, mid_z + max_range)
 
 
-    # def __tt_anim_setup(self, i, tdelta):
-    #     self.__plot_setup()
-    #     self.next_iter(tdelta)
+    def orbit_animation(self, fig, ax, tdelta, frame=0):
+        body_plts=self.plot(ax, frame=frame)
+        ani = FuncAnimation(fig, self.__orb_anim_update, 100, fargs=(body_plts, tdelta, ax, frame), interval=1, blit=False)
+        plt.show()
+        
 
-    # def timetravel_animation(self, tdelta):
-    #     FuncAnimation(plt.gcf(), self.__tt_anim_setup, fargs=(tdelta), interval=1000)
-    #     plt.show()
+    def all_animation(self, fig, ax, ax2, tdelta, frame=0):
+        body_plts=self.plot(ax, frame=frame)
+        ani = FuncAnimation(fig, self.__orb_anim_update, 100, fargs=(body_plts, tdelta, ax, frame), interval=1, blit=False)
 
+        plts=self.cheongu_plot(ax)
+        ani = FuncAnimation(fig, self.__cg_anim_update, 100, fargs=(plts, tdelta), interval=1, blit=False)
 
+        plts2=self.cheongu_plot2d(ax2)
+        ani = FuncAnimation(fig, self.__cg2d_anim_update, 100, fargs=(plts2, tdelta), interval=1, blit=False)
+        
+        plt.show()
 
 
 ############### model compile tools ###################
