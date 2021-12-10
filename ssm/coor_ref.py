@@ -207,6 +207,7 @@ class coor3:  # 좌표계상 수치쌍 class(기준틀 하나에 대해)
     conv_mode = {'s': ('so', 'o'), 'o': ('os', 'o')}[self.coor_mode]
     self.vec=self.__convOS_bidir(self.vec, conv_mode[0])
     self.coor_mode=conv_mode[1]
+    return self
   
 
   # 같은 정보를 가진 새로운 coor3 객체 반환
