@@ -39,10 +39,10 @@
         "a_km": 384400,
         "node_lon_rad": "None",
         "incln_rad": 0.08979719002,
-        "periap_ang_rad": -0.021754365573274658,
+        "periap_ang_rad": -0.11195463893540733,
         "apsidal_prcs": 3233,
         "nodal_prcs": -6793,
-        "anom_true_rad": 0
+        "anom_true_rad": 0.11195463893540733
       }
     }
   ]

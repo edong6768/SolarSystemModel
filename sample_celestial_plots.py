@@ -18,7 +18,7 @@ ax3=fig3.add_subplot()
 for i in range(5):
     model.timetravel_diff(M=30)
     model.cheongu_plot(ax2)
-    model.cheongu_plot2d(ax3)
+    model.cheongu_plot2d(ax3, 0)
 
 # 각 plot을 보기 위해서 show
 plt.show()

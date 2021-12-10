@@ -9,6 +9,8 @@ import ssm.coor_ref as cr
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FuncAnimation
+from timezonefinder import TimezoneFinder 
+import pytz
 
 
 def set_data(plts, data):
@@ -259,8 +261,8 @@ class orbit:
         op, = ax.plot(X, Y, Z, color="black", linewidth=0.5)
 
         # 중심천체--근일점 선분
-        cntr=self.center_body_orbit.base_coor.tuplify(0) if self.center_body_orbit else [0, 0, 0]
-        pl, = ax.plot((cntr[0], X[0]), (cntr[1], Y[0]), (cntr[2], Z[0]), color="black", linewidth=0.5)
+        cntr=self.center_body_orbit.base_coor.vec if self.center_body_orbit else [0, 0, 0]
+        pl, = ax.plot(*np.array([[cntr[0], cntr[1], cntr[2]],[X[0], Y[0], Z[0]]]).transpose(), color="black", linewidth=0.5)
 
         # plot celestial body
         bp=self.body.plot(ax, (self.base_coor.vec-np.array(cntr))*ratio+np.array(cntr), sphere=sphere)
@@ -332,6 +334,9 @@ class ssm_element:
                 # 일식 때는 지구-달-태양이 모두 일직선에 있으므로, 지구에 대해 계산한 값을 달의 현재 승교점편각에 그대로 사용할 수 있다.
                 if elm_data_dict["orbit"]["node_lon_rad"]=='None' : 
                     elm_data_dict["orbit"]["node_lon_rad"]=(cntr_elm.orb.curr_rad+m.pi)%(2*m.pi)
+
+                # 일식이므로 현재 달의 진근점이각이 승교점에 있어야 한다.
+                elm_data_dict["orbit"]["anom_true_rad"]=-elm_data_dict["orbit"]["periap_ang_rad"]
                     
                 # 각 공전궤도요소의 세차 주기를 이용해 등속이란 가정 하에 각속도 계산(rad/s)
                 prcs=["apsidal_prcs", "nodal_prcs"]
@@ -477,17 +482,26 @@ class solar_system_model:
         return rpr
 
     @classmethod
-    def plot_setlim(cls, ax, X, Y, Z):
-        # X, Y, Z 축 사이 비율 교정(없으면 서로 길이 비율이 달라져 일그러짐)
-        X, Y, Z = map(np.array, (X, Y, Z))
-        max_range = np.array([X.max()-X.min(), Y.max()-Y.min(), Z.max()-Z.min()]).max() / 2.0
+    def plot_setlim(cls, ax, X, Y, Z=None, ratio=1):
+        if Z:
+            # X, Y, Z 축 사이 비율 교정(없으면 서로 길이 비율이 달라져 일그러짐)
+            X, Y, Z = map(np.array, (X, Y, Z))
+            max_range = np.array([X.max()-X.min(), Y.max()-Y.min(), Z.max()-Z.min()]).max() / 2.0 * ratio
 
-        mid_x = (X.max()+X.min()) * 0.5
-        mid_y = (Y.max()+Y.min()) * 0.5
-        mid_z = (Z.max()+Z.min()) * 0.5
-        ax.set_xlim(mid_x - max_range, mid_x + max_range)
-        ax.set_ylim(mid_y - max_range, mid_y + max_range)
-        ax.set_zlim(mid_z - max_range, mid_z + max_range)
+            mid_x = (X.max()+X.min()) * 0.5
+            mid_y = (Y.max()+Y.min()) * 0.5
+            mid_z = (Z.max()+Z.min()) * 0.5
+            ax.set_xlim(mid_x - max_range, mid_x + max_range)
+            ax.set_ylim(mid_y - max_range, mid_y + max_range)
+            ax.set_zlim(mid_z - max_range, mid_z + max_range)
+        else:
+            X, Y = map(np.array, (X, Y))
+            max_range = np.array([X.max()-X.min(), Y.max()-Y.min()]).max() / 2.0 * ratio
+
+            mid_x = (X.max()+X.min()) * 0.5
+            mid_y = (Y.max()+Y.min()) * 0.5
+            ax.set_xlim(mid_x - max_range, mid_x + max_range)
+            ax.set_ylim(mid_y - max_range, mid_y + max_range)
 
     def plot(self, ax, frame=0, sphere=False):
         plt.cla()   # clear plot
@@ -504,6 +518,8 @@ class solar_system_model:
         
         self.plot_setlim(ax, X, Y, Z)
         ax.legend()
+        ax.set_title("Orbit", fontdict={'fontsize': 16,'fontweight': 'bold'}, loc='left', pad=20)
+        ax.set_title(self.date_time.strftime('%Y-%m-%dT%H:%M:%S.0Z'), loc='right', pad=20)
         return body_plt
 
     def __orb_anim_update(self, i, body_plts, tdelta, ax, frame=0):
@@ -515,6 +531,8 @@ class solar_system_model:
             else: X, Y, Z = X+Xe, Y+Ye, Z+Ze
 
         self.plot_setlim(ax, X, Y, Z)
+        ax.set_title("Orbit", fontdict={'fontsize': 16,'fontweight': 'bold'}, loc='left', pad=20)
+        ax.set_title(self.date_time.strftime('%Y-%m-%dT%H:%M:%S.0Z'), fontdict={'fontsize': 9}, loc='right', pad=20)
 
 
     def orbit_animation(self, fig, ax, tdelta, frame=0):
@@ -523,7 +541,7 @@ class solar_system_model:
         plt.show()
 
     # 천구 상 특정 천체의 원모양 plot coordinates
-    def __cg_elem_coor(self, e, cntr_ref):
+    def __cg_elem_coor(self, e, cntr_ref, local_ref=None):
             ### 천구상 천체를 원으로 표시 ###
             # 천체의 시직경
             ang_d=self.__ang_d(e)
@@ -534,9 +552,10 @@ class solar_system_model:
             # 좌표변환을 통해 천정상에 있는 원을 원래 있을 위치로 이동
             if e.orb: disp=cntr_ref.base_conv(e.orb.base_coor, 'as')
             else : disp=cntr_ref.base_conv(cr.coor3('o', (0, 0, 0)), 'as')
+            if local_ref: disp=local_ref.base_conv(disp, 'as')
             disp.normalize()
             disp.conv_coor_modeOS()
-
+            
             return (cr.reffrms((disp.vec[1]+m.pi/2)%(2*m.pi), disp.vec[2])).base_conv(coor.conv_coor_modeOS(), 'sa')
 
     #천구 plot
@@ -563,29 +582,12 @@ class solar_system_model:
         ax.set_ylim(-1, 1)
         ax.set_zlim(-1, 1)     
 
+        ax.set_title("Cheongu", fontdict={'fontsize': 16,'fontweight': 'bold'}, loc='left', pad=20)
+        ax.set_title(self.date_time.strftime('%Y-%m-%dT%H:%M:%S.0Z'), fontdict={'fontsize': 9}, loc='right', pad=20)
+
         return plts 
 
-    def cheongu_plot2d(self, ax):
-        # 적도선 및 원점(위도/경도=0,0)
-        ax.plot(np.linspace(-m.pi, m.pi, 500), [0 for i in range(500)], color='midnightblue', linewidth=0.5)
-        ax.plot(0, 0, linestyle="", color='midnightblue', s=2)
-
-        # 관측자가 서 있는 천체의 reffrm obj
-        cntr_ref=self.elements[1].rot.reffrm
-
-        # 태양 외 천체 천구에 표시
-        plts=list()
-        for e in [self.elements[0]]+self.elements[2:]:
-            coor = self.__cg_elem_coor(e, cntr_ref).conv_coor_modeOS()
-            cel_p, = ax.plot((-coor.vec[1]+2*m.pi)%(2*m.pi)-m.pi, color=e.body.color)
-            plts.append(cel_p)
-
-        ax.set_xlim(-m.pi, m.pi)
-        ax.set_ylim(-m.pi, m.pi)
-
-        return plts
-
-    def __cg_anim_update(self, i, plts, tdelta):
+    def __cg_anim_update(self, i, plts, tdelta, ax):
         self.next_iter(tdelta)
 
         # 관측자가 서 있는 천체의 reffrm obj
@@ -596,31 +598,212 @@ class solar_system_model:
             coor = self.__cg_elem_coor(e, cntr_ref)
             plts[n].set_data(coor.vec[0], coor.vec[1])
             plts[n].set_3d_properties(coor.vec[2])
+        
+        ax.set_title("Cheongu", fontdict={'fontsize': 16,'fontweight': 'bold'}, loc='left', pad=20)
+        ax.set_title(self.date_time.strftime('%Y-%m-%dT%H:%M:%S.0Z'), fontdict={'fontsize': 9}, loc='right', pad=20)
 
     def cheongu_animation(self, fig, ax, tdelta):
         plts=self.cheongu_plot(ax)
-        ani = FuncAnimation(fig, self.__cg_anim_update, 100, fargs=(plts, tdelta), interval=1, blit=False)
+        ani = FuncAnimation(fig, self.__cg_anim_update, 100, fargs=(plts, tdelta, ax), interval=1, blit=False)
         plt.show()
 
-    def __cg2d_anim_update(self, i, plts, tdelta):
+
+    # 천구 2D Plot
+    def cheongu_plot2d(self, ax, focus=1):
+        # 적도선 및 원점(위도/경도=0,0)
+        ax.plot(np.linspace(-180, 180, 500), [0 for i in range(500)], color='midnightblue', linewidth=0.5)
+        ax.scatter(0, 0, color='midnightblue', s=2)
+
+        # 관측자가 서 있는 천체의 reffrm obj
+        cntr_ref=self.elements[1].rot.reffrm
+
+        # 태양 외 천체 천구에 표시
+        focus = -1 if focus==1 else focus
+        focus-= 1 if focus else 0
+        plts=list()
+        for n, e in enumerate([self.elements[0]]+self.elements[2:]):
+            coor = self.__cg_elem_coor(e, cntr_ref).conv_coor_modeOS()
+            cel_p, = ax.plot((-coor.vec[1]*180/m.pi+360)%360-180, 90-coor.vec[2]*180/m.pi, color=e.body.color)
+            plts.append(cel_p)
+            
+            if n==focus: self.plot_setlim(ax, (-coor.vec[1]*180/m.pi+360)%360-180, 90-coor.vec[2]*180/m.pi, ratio=4)
+        
+        if focus==-2:
+            ax.set_xlim(-180, 180)
+            ax.set_ylim(-90, 90)
+
+        ax.set_title("Cheongu2D", fontdict={'fontsize': 16,'fontweight': 'bold'}, loc='left', pad=20)
+        ax.set_title(self.date_time.strftime('%Y-%m-%dT%H:%M:%S.0Z'), fontdict={'fontsize': 9}, loc='right', pad=20)
+
+        return plts
+
+    def __cg2d_anim_update(self, i, plts, tdelta, ax, focus=1):
         self.next_iter(tdelta)
 
         # 관측자가 서 있는 천체의 reffrm obj
         cntr_ref=self.elements[1].rot.reffrm
 
         # 태양 외 천체 천구에 표시
+        focus = -1 if focus==1 else focus
+        focus-= 1 if focus else 0
         for n, e in enumerate([self.elements[0]]+self.elements[2:]):
             coor=self.__cg_elem_coor(e, cntr_ref).conv_coor_modeOS()
-            plts[n].set_data((-coor.vec[1]+2*m.pi)%(2*m.pi)-m.pi, m.pi/2-coor.vec[2])
+            plts[n].set_data((-coor.vec[1]*180/m.pi+360)%360-180, 90-coor.vec[2]*180/m.pi)
 
-    def cheongu_animation2d(self, fig, ax, tdelta):
-        plts=self.cheongu_plot2d(ax)
-        ani = FuncAnimation(fig, self.__cg2d_anim_update, 100, fargs=(plts, tdelta), interval=1, blit=False)
+            if n==focus: self.plot_setlim(ax, (-coor.vec[1]*180/m.pi+360)%360-180, 90-coor.vec[2]*180/m.pi, ratio=4)
+        
+        if focus==-2:
+            ax.set_xlim(-180, 180)
+            ax.set_ylim(-90, 90)
+        
+        ax.set_title("Cheongu2D", fontdict={'fontsize': 16,'fontweight': 'bold'}, loc='left', pad=20)
+        ax.set_title(self.date_time.strftime('%Y-%m-%dT%H:%M:%S.0Z'), fontdict={'fontsize': 9}, loc='right', pad=20)
+
+    def cheongu_animation2d(self, fig, ax, tdelta, focus=1):
+        plts=self.cheongu_plot2d(ax, focus)
+        ani = FuncAnimation(fig, self.__cg2d_anim_update, 100, fargs=(plts, tdelta, ax, focus), interval=1, blit=False)
         plt.show()
 
 
+    def local_datetime_str(self, lon, lat):
+        str_tz=TimezoneFinder().timezone_at(lng=lon*180/m.pi, lat=lat*180/m.pi)
+        local_tz = pytz.timezone(str_tz)
+        local_dt = self.date_time.replace(tzinfo=pytz.utc).astimezone(local_tz)
+        return str_tz+" "+local_tz.normalize(local_dt).strftime('%Y-%m-%dT%H:%M:%S.%f%z')
+    
+    #천구 plot
+    def local_cheongu_plot(self, ax, lon, lat):
+        # 지표면
+        coor=cr.coor3('s', *[(1, ang, m.pi/2) for ang in np.linspace(0, 2* m.pi, 500)])
+        ax.plot(*tuple([list(i) for i in coor.conv_coor_modeOS().vec]), color='midnightblue', linewidth=0.5)
 
+        # 위도/경도 0,0 선
+        ax.plot((0, 1), (0, 0), (0, 0), color='midnightblue', linewidth=0.5)
 
+        # 관측자가 서 있는 천체의 reffrm obj
+        cntr_ref=self.elements[1].rot.reffrm
+        
+        # 관측자가 천체 지표면상 서 있는 위치에서의 reffrm obj
+        lon, lat = lon*m.pi/180, (-lat*m.pi/180)+m.pi/2
+        coor = cr.coor3('s', (self.elements[1].body.diameter_km, lon, lat))
+        coor=coor.conv_coor_modeOS().tuplify(0)
+        local_ref=cr.reffrms(m.pi/2+lon, lat, m.pi/2, "reffrm", *coor)
+
+        # 적도 원
+        coor=cr.coor3('s', *[(1, ang, m.pi/2) for ang in np.linspace(0, 2* m.pi, 500)])
+        coor=cr.reffrms(m.pi/2+lon, lat, m.pi/2).base_conv(coor.conv_coor_modeOS(), 'as')
+        ax.plot(*tuple([list(i) for i in coor.vec]), color='midnightblue', linewidth=0.5)
+
+        # 태양 외 천체 천구에 표시
+        plts=list()
+        for e in [self.elements[0]]+self.elements[2:]:
+            coor=self.__cg_elem_coor(e, cntr_ref, local_ref)
+            cel_p, = ax.plot(*[i for i in coor.vec], color=e.body.color)
+            plts.append(cel_p)
+
+        # X, Y, Z 축 사이 비율 교정(없으면 서로 길이 비율이 달라져 일그러짐)
+        ax.set_xlim(-1, 1)
+        ax.set_ylim(-1, 1)
+        ax.set_zlim(-1, 1)     
+
+        ax.set_title("Local Cheongu", fontdict={'fontsize': 16,'fontweight': 'bold'}, loc='left', pad=20)
+        ax.set_title(self.local_datetime_str(lon, lat), fontdict={'fontsize': 9}, loc='right', pad=20)
+
+        return plts 
+
+    def __lcg_anim_update(self, i, plts, tdelta, ax, lon, lat):
+        self.next_iter(tdelta)
+
+        # 관측자가 서 있는 천체의 reffrm obj
+        cntr_ref=self.elements[1].rot.reffrm
+
+        # 관측자가 천체 지표면상 서 있는 위치에서의 reffrm obj
+        lon, lat = lon*m.pi/180, (-lat*m.pi/180)+m.pi/2
+        coor = cr.coor3('s', (self.elements[1].body.diameter_km, lon, lat))
+        coor=coor.conv_coor_modeOS().tuplify(0)
+        local_ref=cr.reffrms(m.pi/2+lon, lat, m.pi/2, "reffrm", *coor)
+
+        # 태양 외 천체 천구에 표시
+        for n, e in enumerate([self.elements[0]]+self.elements[2:]):
+            coor=self.__cg_elem_coor(e, cntr_ref, local_ref)
+            plts[n].set_data(coor.vec[0], coor.vec[1])
+            plts[n].set_3d_properties(coor.vec[2])
+        
+        ax.set_title("Local Cheongu", fontdict={'fontsize': 16,'fontweight': 'bold'}, loc='left', pad=20)
+        ax.set_title(self.local_datetime_str(lon, lat), fontdict={'fontsize': 9}, loc='right', pad=20)
+
+    def local_cheongu_animation(self, fig, ax, lon, lat, tdelta):
+        plts=self.local_cheongu_plot(ax, lon, lat)
+        ani = FuncAnimation(fig, self.__lcg_anim_update, 100, fargs=(plts, tdelta, ax, lon, lat), interval=1, blit=False)
+        plt.show()
+
+    # 천구 2D Plot
+    def local_cheongu_plot2d(self, ax, lon, lat, focus=1):
+        # 적도선 및 원점(위도/경도=0,0)
+        ax.plot(np.linspace(-180, 180, 500), [0 for i in range(500)], color='midnightblue', linewidth=0.5)
+        ax.scatter(0, 0, color='midnightblue', s=2)
+
+        # 관측자가 서 있는 천체의 reffrm obj
+        cntr_ref=self.elements[1].rot.reffrm
+
+        # 관측자가 천체 지표면상 서 있는 위치에서의 reffrm obj
+        lon, lat = lon*m.pi/180, (-lat*m.pi/180)+m.pi/2
+        coor = cr.coor3('s', (self.elements[1].body.diameter_km, lon, lat))
+        coor=coor.conv_coor_modeOS().tuplify(0)
+        local_ref=cr.reffrms(m.pi/2+lon, lat, m.pi/2, "reffrm", *coor)
+
+        # 태양 외 천체 천구에 표시
+        focus = -1 if focus==1 else focus
+        focus-= 1 if focus else 0
+        plts=list()
+        for n, e in enumerate([self.elements[0]]+self.elements[2:]):
+            coor = self.__cg_elem_coor(e, cntr_ref, local_ref).conv_coor_modeOS()
+            cel_p, = ax.plot((-coor.vec[1]*180/m.pi+360)%360-180, 90-coor.vec[2]*180/m.pi, color=e.body.color)
+            plts.append(cel_p)
+            
+            if n==focus: self.plot_setlim(ax, (-coor.vec[1]*180/m.pi+360)%360-180, 90-coor.vec[2]*180/m.pi, ratio=4)
+        
+        if focus==-2:
+            ax.set_xlim(-180, 180)
+            ax.set_ylim(-90, 90)
+
+        ax.set_title("Local Cheongu2D", fontdict={'fontsize': 16,'fontweight': 'bold'}, loc='left', pad=20)
+        ax.set_title(self.local_datetime_str(lon, lat), fontdict={'fontsize': 9}, loc='right', pad=20)
+
+        return plts
+
+    def __lcg2d_anim_update(self, i, plts, tdelta, ax, lon, lat, focus=1):
+        self.next_iter(tdelta)
+
+        # 관측자가 서 있는 천체의 reffrm obj
+        cntr_ref=self.elements[1].rot.reffrm
+
+        # 관측자가 천체 지표면상 서 있는 위치에서의 reffrm obj
+        lon, lat = lon*m.pi/180, (-lat*m.pi/180)+m.pi/2
+        coor = cr.coor3('s', (self.elements[1].body.diameter_km, lon, lat))
+        coor=coor.conv_coor_modeOS().tuplify(0)
+        local_ref=cr.reffrms(m.pi/2+lon, lat, m.pi/2, "reffrm", *coor)
+
+        # 태양 외 천체 천구에 표시
+        focus = -1 if focus==1 else focus
+        focus-= 1 if focus else 0
+        for n, e in enumerate([self.elements[0]]+self.elements[2:]):
+            coor=self.__cg_elem_coor(e, cntr_ref, local_ref).conv_coor_modeOS()
+            plts[n].set_data((-coor.vec[1]*180/m.pi+360)%360-180, 90-coor.vec[2]*180/m.pi)
+
+            if n==focus: self.plot_setlim(ax, (-coor.vec[1]*180/m.pi+360)%360-180, 90-coor.vec[2]*180/m.pi, ratio=4)
+        
+        if focus==-2:
+            ax.set_xlim(-180, 180)
+            ax.set_ylim(-90, 90)
+
+        ax.set_title("Local Cheongu2D", fontdict={'fontsize': 16,'fontweight': 'bold'}, loc='left', pad=20)
+        ax.set_title(self.local_datetime_str(lon, lat), fontdict={'fontsize': 9}, loc='right', pad=20)
+
+    def local_cheongu_animation2d(self, fig, ax, lon, lat, tdelta, focus=1):
+        plts=self.local_cheongu_plot2d(ax, lon, lat, focus)
+        ani = FuncAnimation(fig, self.__lcg2d_anim_update, 100, fargs=(plts, tdelta, ax, lon, lat, focus), interval=1, blit=False)
+        plt.show()
 
     # def all_animation(self, fig, ax, ax2, tdelta, frame=0):
     #     body_plts=self.plot(ax, frame=frame)
@@ -695,11 +878,17 @@ class solar_system_model:
     ## (지구중심과 태양중심을 이은 일직선 기준)(l_s2e)
     ## 입력 : 지구-달 거리, 태양-지구 거리
     ## 출력 : 지구중심에서 l_s2e을 기준으로 일식경계각
-    def eclps_elon_rad(self):
+    def partial_eclps_elon_rad(self):
         rs, re, rm = (e.body.diameter_km/2 for e in self.elements)
         s2e_km=abs(self.elements[1].orb.base_coor)
         e2m_km=self.elements[1].orb.base_coor / self.elements[2].orb.base_coor
         return m.asin((rs-re)/ s2e_km) + m.asin((re+rm) / e2m_km)
+
+    def full_eclps_elon_rad(self):
+        rs, re, rm = (e.body.diameter_km/2 for e in self.elements)
+        s2e_km=abs(self.elements[1].orb.base_coor)
+        e2m_km=self.elements[1].orb.base_coor / self.elements[2].orb.base_coor
+        return m.acos((rs+re)/ s2e_km) - m.acos((re+rm) / e2m_km)
     
     # 이각 : 지구에서 관측한 태양과 천체 사이 각도
     def elon_rad(self):
@@ -707,18 +896,17 @@ class solar_system_model:
         return (mn-er)%(-er)
 
     # 현재 일식이 발생하고 있는지 확인
-    def eclps_judge(self): 
-        # if (self.elon_rad()<self.eclps_elon_rad()):
-        #     print("%.5f < %.5f ? %s"%(self.elon_rad()*180/m.pi, self.eclps_elon_rad()*180/m.pi, (self.elon_rad()<self.eclps_elon_rad())))
-        return (self.elon_rad()<self.eclps_elon_rad())
+    def eclps_judge(self, mode=0): 
+        if mode: return (self.elon_rad()<self.full_eclps_elon_rad())
+        else: return (self.elon_rad()<self.partial_eclps_elon_rad())
     
     # 
-    def search_eclipse(self, tdelta, until=None):
-        while(not self.eclps_judge()):
+    def search_eclipse(self, tdelta, mode=0, until=None):
+        while(not self.eclps_judge(mode)):
             self.next_iter(tdelta)
             if (until and parse(until)<self.date_time): break
             print(self.date_time, end="\r")
-        if self.eclps_judge() : print("Search success : ", self.date_time.strftime('%Y-%m-%dT%H:%M:%S.0Z'))
+        if self.eclps_judge(mode) : print("Search success : ", self.date_time.strftime('%Y-%m-%dT%H:%M:%S.0Z'))
         else : print("Search failed")
         return self.date_time
 
