@@ -1,0 +1,82 @@
+{
+  "model_name" : "RandSSM0",
+  "element_count": 3,
+  "Event": "Eclipse",
+  "elements":[
+    {
+      "name": "Sun",
+      "mass_kg": 1.9885e+30,
+      "diameter_km": 1392700
+    },
+    {
+      "name": "Earth",
+      "mass_kg": 5.9722e+24,
+      "diameter_km": 12742,
+      "perihelion": "2021-01-02T13:51:00.0Z",
+      "Eclipse": "2021-06-10T10:41:51.0Z",
+      "rotate":{
+        "eqnx_lon_rad": 1.346032,
+        "incln_rad": 0.4090528168,
+        "ang_v_rad": 7.29e-5
+      },
+      "orbit":{
+        "center_body": "Sun",
+        "e": 0.016710219,
+        "a_km": 149597887.5,
+        "node_lon_rad": 0,
+        "incln_rad": 0,
+        "periap_ang_rad": 0
+      }
+    },
+
+    {
+      "name": "Moon",
+      "mass_kg": 7.34767309e+22,
+      "diameter_km": 3474.8,
+      "orbit":{
+        "center_body": "Earth",
+        "e":0.0549,
+        "a_km": 384400,
+        "node_lon_rad": "None",
+        "incln_rad": 0.08979719002,
+        "periap_ang_rad": -0.11195463893540733,
+        "apsidal_prcs": 3233,
+        "nodal_prcs": -6793,
+        "anom_true_rad": 0.11195463893540733
+      }
+    },
+    {
+      "name": "Venus",
+      "mass_kg": 4.8675e+24,
+      "diameter_km": 6051.8,
+      "orbit":{
+        "center_body": "Sun",
+        "e": 0.006772,
+        "a_km": 108208000,
+        "node_lon_rad": 1.33831847,
+        "incln_rad": 0.06736970913,
+        "periap_ang_rad": 0.9579065067,
+        "apsidal_prcs": 3233,
+        "nodal_prcs": -6793,
+        "anom_true_rad": 0.11195463893540733
+      }
+    },
+    {
+      "name": "Mars",
+      "mass_kg": 6.4171e+23,
+      "diameter_km": 6779,
+      "orbit":{
+        "center_body": "Sun",
+        "e": 0.094,
+        "a_km": 227.9392e+6,
+        "node_lon_rad": 1.33831847,
+        "incln_rad": 0.06736970913,
+        "periap_ang_rad": 0.9579065067,
+        "apsidal_prcs": 3233,
+        "nodal_prcs": -6793,
+        "anom_true_rad": 0.11195463893540733
+      }
+    }
+
+  ]
+}

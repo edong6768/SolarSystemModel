@@ -214,7 +214,16 @@ class coor3:  # 좌표계상 수치쌍 class(기준틀 하나에 대해)
   def copy_coor(self):
     return coor3(self.coor_mode, np.copy(self.vec))
 
+  # XY평면 상 원점을 중심으로 하는 원의 coor obj 제작
+  @classmethod
+  def circle_coors(cls, radius=1, num=500, ang_d=m.pi/2):
+    return cls('s', *[(radius, ang, ang_d) for ang in np.linspace(0, 2* m.pi, num)]).conv_coor_modeOS()
 
+  # XY평면 상 원점을 중심으로 하는 원의 coor obj 제작
+  @classmethod
+  def conic_coors(cls, conic=None, ratio=1, e=None, a_km=None, num=500, ang_d=m.pi/2):
+    if not conic : conic = lambda ang: a_km * (1 - e**2) / (1 + e * m.cos(ang))
+    return cls('s', *[(conic(ang)*ratio, ang, ang_d) for ang in np.linspace(0, 2* m.pi, num)]).conv_coor_modeOS()
 
   ################ operation overload ################
 
