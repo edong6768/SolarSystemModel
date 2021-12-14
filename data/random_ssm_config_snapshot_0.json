@@ -64,7 +64,7 @@
     {
       "name": "Mars",
       "mass_kg": 6.4171e+23,
-      "diameter_km": 6779,
+      "diameter_km": 6779e+4,
       "orbit":{
         "center_body": "Sun",
         "e": 0.094,
