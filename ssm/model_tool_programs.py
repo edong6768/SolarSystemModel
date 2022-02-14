@@ -9,14 +9,14 @@ def console_interface(title, tools):
     while(True):
         mode=int(input(" Select mode : "))
         print("\n==> %d. %s selected"%(i+1, modes[0]))
-        if mode not in list(range(len(tools))): break
+        if mode+1 not in list(range(len(tools))): break
         title, tool, fargs=tools[mode-1]
         tool(*fargs)
         print("Program terminated.")
     
 def load_model():
-    model=cel.solar_system_model.config_JSON_load('data/random_ssm_config_snapshot_0.json')
-    #model=cel.solar_system_model.config_JSON_load('data/SEM_config_snapshot_0.json', print_info=False)
+    model=cel.solar_system_model.config_JSON_load('../data/random_ssm_config_snapshot_0.json')
+    #model=cel.solar_system_model.config_JSON_load('../data/SEM_config_snapshot_0.json', print_info=False)
     return model
 
 
@@ -100,11 +100,14 @@ def eclipse_search_tool(model):
     #     model.timetravel_diff(d=-1) # 하루 앞으로 이동 후 다시 검색하기 위해
     #     print(model.search_eclipse(-60, 1)) # 1분 간격으로 검색
 
+def main():
+    model=load_model()
+    
+    tools=[("animation_tool", animation_tool, (model,)), 
+            ("plot tools", plot_tools, (model,)),
+            ("eclipse search tool", eclipse_search_tool, (model,))]
+            
+    console_interface('Tool selection', tools)
 
-model=load_model()
+if __name__=="__main__": main()
 
-tools=[("animation_tool", animation_tool, (model,)), 
-        ("plot tools", plot_tools, (model,)),
-        ("eclipse search tool", eclipse_search_tool, (model,))]
-        
-console_interface('Tool selection', tools)
